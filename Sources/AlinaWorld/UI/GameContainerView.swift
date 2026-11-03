@@ -1,65 +1,116 @@
-import SwiftUI
+import Combine
 import SpriteKit
+import SwiftUI
 
-private final class GameSceneHolder {
+/// Owns the scene for one attempt and republishes its HUD values when they change.
+final class GameSession: ObservableObject {
     let scene = GameScene()
+    @Published var hud = HUDSnapshot()
+    @Published var paused = false
+    @Published var showHint = true
     private var timer: Timer?
 
-    func startHUDPolling(model: GameHUDModel) {
+    init(mission: Mission, onOutcome: @escaping (GameOutcome) -> Void) {
+        let defaults = UserDefaults.standard
+        scene.size = CGSize(width: 1280, height: 760)
+        scene.scaleMode = .resizeFill
+        scene.mission = mission
+        scene.assistMode = defaults.bool(forKey: SettingsKey.assistMode)
+        scene.ambientParticles = defaults.object(forKey: SettingsKey.ambientEffects) as? Bool ?? true
+        scene.onOutcome = { [weak self] outcome in
+            self?.stop()
+            onOutcome(outcome)
+        }
+        scene.onPauseRequested = { [weak self] in
+            MenuNavigationState.shared.overlayFocus = 0
+            self?.paused = true
+        }
+        showHint = defaults.object(forKey: SettingsKey.showHints) as? Bool ?? true
+    }
+
+    func start() {
+        InputController.shared.clearPresses()
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [self] _ in
-            let state = self.scene.hudState
-            model.lives = state.lives
-            model.coins = state.coins
-            model.crystals = state.crystals
-            model.title = state.missionTitle
-            model.elapsed = state.elapsed
-            model.timeLimit = state.timeLimit
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            let snapshot = self.scene.hudSnapshot
+            if snapshot != self.hud { self.hud = snapshot }
+        }
+        if ProcessInfo.processInfo.environment["ALINA_START_ROUTE"]?.hasSuffix(":paused") == true {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.pause() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            withAnimation(.easeOut(duration: 0.4)) { self?.showHint = false }
         }
     }
 
-    func stopHUDPolling() {
+    func stop() {
         timer?.invalidate()
         timer = nil
     }
+
+    func pause() {
+        scene.pauseGame()
+        MenuNavigationState.shared.overlayFocus = 0
+        paused = true
+    }
+
+    func resume() {
+        paused = false
+        scene.resumeGame()
+    }
+
+    func restartFromCheckpoint() {
+        paused = false
+        scene.restartFromCheckpoint()
+    }
+
+    deinit { timer?.invalidate() }
 }
 
 struct GameContainerView: View {
     let mission: Mission
-    let onOutcome: (GameOutcome, Int) -> Void
+    let onRetry: () -> Void
+    let onQuit: () -> Void
 
-    @ObservedObject private var hudModel = GameHUDModel()
-    private let sceneHolder = GameSceneHolder()
+    @StateObject private var session: GameSession
+    @AppStorage(SettingsKey.frameRate) private var frameRate = 120
+
+    init(mission: Mission, onOutcome: @escaping (GameOutcome) -> Void, onRetry: @escaping () -> Void, onQuit: @escaping () -> Void) {
+        self.mission = mission
+        self.onRetry = onRetry
+        self.onQuit = onQuit
+        _session = StateObject(wrappedValue: GameSession(mission: mission, onOutcome: onOutcome))
+    }
 
     var body: some View {
         ZStack {
-            SpriteView(
-                scene: sceneHolder.scene,
-                preferredFramesPerSecond: 60,
-                options: [.ignoresSiblingOrder]
-            )
-            .ignoresSafeArea()
+            SpriteView(scene: session.scene, preferredFramesPerSecond: frameRate, options: [.ignoresSiblingOrder])
+                .ignoresSafeArea()
 
-            HUDOverlay(
-                lives: hudModel.lives,
-                coins: hudModel.coins,
-                crystals: hudModel.crystals,
-                title: hudModel.title,
-                elapsed: hudModel.elapsed,
-                timeLimit: hudModel.timeLimit,
-                collectTarget: mission.objective == .collectN ? mission.collectRequired : nil
-            )
+            HUDOverlay(mission: mission, hud: session.hud, showHint: session.showHint, onPause: session.pause)
+                .padding(.top, WindowChrome.titleBarHeight)
+                .allowsHitTesting(!session.paused)
+
+            if session.paused {
+                PauseOverlay(
+                    mission: mission,
+                    hud: session.hud,
+                    onResume: session.resume,
+                    onCheckpoint: session.restartFromCheckpoint,
+                    onRestart: onRetry,
+                    onQuit: onQuit
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
         }
+        .animation(.easeOut(duration: 0.18), value: session.paused)
         .onAppear {
-            sceneHolder.scene.size = CGSize(width: 960, height: 540)
-            sceneHolder.scene.scaleMode = .resizeFill
-            sceneHolder.scene.mission = mission
-            sceneHolder.scene.onOutcome = onOutcome
-            sceneHolder.startHUDPolling(model: hudModel)
+            session.start()
             InputController.shared.mode = .gameplay
         }
         .onDisappear {
-            sceneHolder.stopHUDPolling()
+            session.stop()
             InputController.shared.mode = .menu
         }
     }

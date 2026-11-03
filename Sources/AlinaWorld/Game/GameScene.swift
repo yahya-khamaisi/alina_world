@@ -1,18 +1,46 @@
 import SpriteKit
 
-enum GameOutcome {
-    case playing
-    case won
-    case lost
-    case paused
+struct MissionResult: Equatable {
+    let missionID: Int
+    let petals: Int
+    let time: CGFloat
+    let hits: Int
+    let parTime: CGFloat
+    /// Completed, under par time, no damage.
+    let stars: [Bool]
+    let newBestTime: Bool
+
+    var starCount: Int { stars.filter { $0 }.count }
 }
 
-final class GameScene: SKScene, SKPhysicsContactDelegate {
-    var mission: Mission!
-    var onOutcome: ((GameOutcome, Int) -> Void)?
-    var onTransitionComplete: (() -> Void)?
+enum GameOutcome {
+    case won(MissionResult)
+    case lost(reason: String)
+}
 
-    private var alina = AlinaNode()
+/// Values the SwiftUI HUD renders; compared before publishing so the HUD only redraws on change.
+struct HUDSnapshot: Equatable {
+    var hearts = 3
+    var maxHearts = 3
+    var petals = 0
+    var shards = 0
+    var shardTarget: Int?
+    var bossHits = 0
+    var seconds = 0
+    var countdown = false
+    var bloom = false
+    var ribbon = false
+    var progress: CGFloat = 0
+}
+
+final class GameScene: SKScene {
+    var mission: Mission!
+    var onOutcome: ((GameOutcome) -> Void)?
+    var onPauseRequested: (() -> Void)?
+    var assistMode = false
+    var ambientParticles = true
+
+    private let alina = AlinaNode()
     private var builtLevel: BuiltLevel?
     private var solidRects: [CGRect] = []
     private var slopeRects: [(rect: CGRect, kind: TileKind)] = []
@@ -20,262 +48,209 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var movingPlatforms: [MovingPlatform] = []
     private var questionBlocks: [BlockNode] = []
     private var brickBlocks: [BlockNode] = []
+    private var collectibles: [CollectibleNode] = []
+    private var bloomBlocksOpened = 0
 
-    private var lives = 3
-    private var coins = 0
-    private var crystals = 0
+    private var hearts = 3
+    private var maxHearts = 3
+    private var petals = 0
+    private var shards = 0
+    private var hits = 0
     private var elapsed: CGFloat = 0
-    private var outcome: GameOutcome = .playing
+    private var finished = false
+    private(set) var gamePaused = false
     private var bossDefeated = false
+    private var checkpoint: CGPoint = .zero
 
     private let parallax = ParallaxBackground()
     private let cameraNode = SKCameraNode()
-    private var weatherSystem: WeatherSystem?
-    private var lightingSystem: LightingSystem?
-    private var transitionManager: SceneTransitionManager?
-
-    private var timeOfDay: TimeOfDay = .morning
-    private var timeOfDayProgress: CGFloat = 0
-    private let dayCycleDuration: CGFloat = 300.0
     private var lastUpdateTime: TimeInterval = 0
 
+    private var timeLimit: CGFloat? {
+        guard let limit = mission?.timeLimit else { return nil }
+        return CGFloat(limit) * (assistMode ? 1.3 : 1)
+    }
+
+    private var mapWidth: CGFloat { builtLevel?.map.worldSize().width ?? size.width }
+
+    private var parTime: CGFloat {
+        if let limit = mission.timeLimit { return CGFloat(limit) * 0.75 }
+        return CGFloat(builtLevel?.map.width ?? 100) * 0.3 + 10
+    }
+
+    // MARK: Setup
+
     override func didMove(to view: SKView) {
-        guard let mission else { return }
+        guard let mission, builtLevel == nil else { return }
         scaleMode = .resizeFill
-        anchorPoint = CGPoint(x: 0, y: 0)
+        anchorPoint = .zero
 
         camera = cameraNode
         addChild(cameraNode)
+        updateCameraScale()
 
-        weatherSystem = WeatherSystem(scene: self, cameraNode: cameraNode)
-        lightingSystem = LightingSystem(scene: self, cameraNode: cameraNode)
-        transitionManager = SceneTransitionManager(scene: self)
-
-        builtLevel = LevelBuilder.build(mission: mission, in: self)
-        guard let level = builtLevel else { return }
+        let level = LevelBuilder.build(mission: mission, in: self)
+        builtLevel = level
 
         solidRects = level.map.solidRects()
         slopeRects = level.map.slopeRects()
         platformRects = level.map.platformRects()
         movingPlatforms = level.movingPlatforms
-        questionBlocks = level.worldNode.children.compactMap { node -> BlockNode? in
-            guard let block = node as? BlockNode, block.blockKind == .question else { return nil }
-            return block
-        }
-        brickBlocks = level.worldNode.children.compactMap { node -> BlockNode? in
-            guard let block = node as? BlockNode, block.blockKind == .brick else { return nil }
-            return block
-        }
+        collectibles = level.collectibles
+        let blocks = level.worldNode.children.compactMap { $0 as? BlockNode }
+        questionBlocks = blocks.filter { $0.blockKind == .question }.sorted { $0.position.x < $1.position.x }
+        brickBlocks = blocks.filter { $0.blockKind == .brick }
 
+        maxHearts = assistMode ? 4 : 3
+        hearts = maxHearts
+        checkpoint = level.playerStart
         alina.position = level.playerStart
         level.worldNode.addChild(alina)
-        lightingSystem?.addPlayerLight(to: alina)
 
-        setupWorldPalettes(level: level)
-        setupWeatherAndLighting(level: level)
+        parallax.attach(
+            to: self,
+            theme: level.theme,
+            mapWidth: level.map.worldSize().width,
+            groundTop: level.groundTop,
+            ambientParticles: ambientParticles
+        )
+
+        let visible = visibleRect
+        cameraNode.position = CGPoint(x: max(visible.width / 2, alina.position.x + 80), y: visible.height / 2)
 
         InputController.shared.mode = .gameplay
         InputController.shared.startMonitoring()
     }
 
-    private func setupWorldPalettes(level: BuiltLevel) {
-        let mapWidth = level.map.worldSize().width
-        let palette = level.palette
-
-        let timeOfDay = determineTimeOfDay(from: mission)
-        self.timeOfDay = timeOfDay
-
-        parallax.attach(to: self, palette: palette, mapWidth: mapWidth, timeOfDay: timeOfDay)
-
-        for hazard in level.hazards {
-            lightingSystem?.addShadowCaster(hazard)
-        }
-        for enemy in level.enemies {
-            lightingSystem?.addShadowCaster(enemy)
-        }
-        for platform in level.movingPlatforms {
-            lightingSystem?.addShadowCaster(platform.node)
-        }
+    override func didChangeSize(_ oldSize: CGSize) {
+        super.didChangeSize(oldSize)
+        updateCameraScale()
     }
 
-    private func determineTimeOfDay(from mission: Mission) -> TimeOfDay {
-        let act = mission.act
-        switch act {
-        case 1: return .dawn
-        case 2: return .morning
-        case 3: return .noon
-        case 4: return .afternoon
-        case 5: return .dusk
-        case 6: return .night
-        default: return .morning
-        }
+    private func updateCameraScale() {
+        guard size.height > 0 else { return }
+        cameraNode.setScale(GameConstants.viewHeight / size.height)
     }
 
-    private func setupWeatherAndLighting(level: BuiltLevel) {
-        let world = mission.world.lowercased()
-        let weather: WeatherType
-        let intensity: CGFloat
-
-        switch world {
-        case "brook":
-            weather = .rain
-            intensity = 0.6
-        case "storm":
-            weather = .storm
-            intensity = 0.8
-        case "grove":
-            weather = .fog
-            intensity = 0.4
-        case "cavern":
-            weather = .fog
-            intensity = 0.5
-        case "marsh":
-            weather = .fog
-            intensity = 0.3
-        case "ridge":
-            weather = .wind
-            intensity = 0.5
-        case "spire":
-            weather = .wind
-            intensity = 0.4
-        case "throne":
-            weather = .storm
-            intensity = 0.7
-        default:
-            weather = .none
-            intensity = 0
-        }
-
-        weatherSystem?.setWeather(weather, intensity: intensity)
-        lightingSystem?.setWeather(weather, intensity: intensity)
-        lightingSystem?.setTimeOfDay(timeOfDay)
+    /// Camera view in world coordinates.
+    private var visibleRect: CGRect {
+        let scale = cameraNode.xScale
+        let w = size.width * scale
+        let h = size.height * scale
+        return CGRect(x: cameraNode.position.x - w / 2, y: cameraNode.position.y - h / 2, width: w, height: h)
     }
 
     override func willMove(from view: SKView) {
         InputController.shared.mode = .menu
-        weatherSystem?.cleanup()
-        lightingSystem?.cleanup()
         parallax.cleanup()
     }
 
-    override func update(_ currentTime: TimeInterval) {
-        guard outcome == .playing, let mission, let level = builtLevel else { return }
+    // MARK: Pause
 
-        let delta: TimeInterval
-        if lastUpdateTime > 0 {
-            delta = currentTime - lastUpdateTime
-        } else {
-            delta = 1.0 / 60.0
-        }
+    func pauseGame() {
+        guard !gamePaused, !finished else { return }
+        gamePaused = true
+        isPaused = true
+        InputController.shared.mode = .menu
+    }
+
+    func resumeGame() {
+        gamePaused = false
+        isPaused = false
+        lastUpdateTime = 0
+        InputController.shared.mode = .gameplay
+        _ = InputController.shared.consumePause()
+    }
+
+    func restartFromCheckpoint() {
+        alina.resetForRespawn(at: checkpoint)
+        resumeGame()
+    }
+
+    // MARK: Loop
+
+    override func update(_ currentTime: TimeInterval) {
+        guard !finished, !gamePaused, let mission, let level = builtLevel else { return }
+
+        let delta = lastUpdateTime > 0 ? currentTime - lastUpdateTime : 1.0 / 60.0
         lastUpdateTime = currentTime
-        let dt = CGFloat(min(delta, 1.0 / 30.0))
+        let clamped = min(delta, 1.0 / 30.0)
+        let dt = CGFloat(clamped)
         elapsed += dt
 
-        updateTimeOfDay(dt: dt)
-        updateMovingPlatforms(dt: dt)
-
         if InputController.shared.consumePause() {
-            outcome = .paused
-            InputController.shared.mode = .menu
-            onOutcome?(.paused, coins)
+            pauseGame()
+            onPauseRequested?()
             return
         }
-
         if InputController.shared.consumeFullscreen() {
             AppWindowController.toggleFullscreen()
         }
-
-        if let timeLimit = mission.timeLimit {
-            if elapsed > CGFloat(timeLimit) {
-                loseLife()
-                return
-            }
+        if let timeLimit, elapsed > timeLimit {
+            fail(reason: "The light faded before Alina reached it.")
+            return
         }
 
-        alina.update(input: InputController.shared, delta: delta, difficulty: mission.difficulty)
-        moveAndCollide(delta: delta)
+        updateMovingPlatforms(dt: dt)
+        alina.update(input: InputController.shared, delta: clamped, difficulty: mission.difficulty)
+        moveAndCollide(delta: clamped)
 
         for enemy in level.enemies where enemy.alive {
-            enemy.update(delta: delta)
+            enemy.update(delta: clamped)
             handleEnemyCollision(enemy)
         }
 
-        checkCollectibles(level)
+        checkCollectibles()
         checkFlag(level)
         checkHazards(level)
         checkFallDeath()
+        updateCheckpoint()
         updateCamera(delta: dt)
-
-        weatherSystem?.update(delta: delta, cameraX: cameraNode.position.x)
-        lightingSystem?.update(delta: delta, cameraX: cameraNode.position.x, playerPosition: alina.position)
-        parallax.update(cameraX: cameraNode.position.x - size.width / 2, viewWidth: size.width, delta: delta, timeOfDay: timeOfDay)
+        parallax.update(visible: visibleRect, delta: clamped)
 
         if mission.objective == .defeatBoss && bossDefeated {
             win()
-        } else if mission.objective == .collectN {
-            let required = mission.collectRequired
-            if crystals >= required {
-                win()
-            }
-        }
-    }
-
-    private func updateTimeOfDay(dt: CGFloat) {
-        timeOfDayProgress += dt / dayCycleDuration
-        if timeOfDayProgress >= 1.0 {
-            timeOfDayProgress = 0
+        } else if mission.objective == .collectN && shards >= mission.collectRequired {
+            win()
         }
     }
 
     private func updateMovingPlatforms(dt: CGFloat) {
-        for i in 0..<movingPlatforms.count {
+        for i in movingPlatforms.indices {
             var platform = movingPlatforms[i]
-            let path = platform.path
-            guard path.count >= 2 else { continue }
-
-            let currentPoint = path[platform.currentIndex]
-            let nextIndex = (platform.currentIndex + 1) % path.count
-            let nextPoint = path[nextIndex]
-
-            let distance = hypot(nextPoint.x - currentPoint.x, nextPoint.y - currentPoint.y)
-            let travelTime = distance / platform.speed
-            platform.progress += dt / travelTime
-
+            guard platform.path.count >= 2 else { continue }
+            let current = platform.path[platform.currentIndex]
+            let nextIndex = (platform.currentIndex + 1) % platform.path.count
+            let next = platform.path[nextIndex]
+            let distance = max(1, hypot(next.x - current.x, next.y - current.y))
+            platform.progress += dt / (distance / platform.speed)
             if platform.progress >= 1.0 {
                 platform.progress = 0
                 platform.currentIndex = nextIndex
             }
-
-            let targetX = lerp(currentPoint.x, nextPoint.x, platform.progress)
-            let targetY = lerp(currentPoint.y, nextPoint.y, platform.progress)
-            platform.node.position = CGPoint(x: targetX, y: targetY)
-
+            platform.node.position = CGPoint(
+                x: current.x + (next.x - current.x) * platform.progress,
+                y: current.y + (next.y - current.y) * platform.progress
+            )
             movingPlatforms[i] = platform
         }
     }
 
-    private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat {
-        a + (b - a) * t
-    }
+    // MARK: Collision
 
     private func moveAndCollide(delta: TimeInterval) {
         let dt = CGFloat(delta)
         var rect = alina.collisionRect
 
         rect.origin.x += alina.velocityX * dt
+        rect.origin.x = max(0, min(mapWidth - rect.width, rect.origin.x))
         resolveAxis(&rect, axis: .horizontal)
-        checkSlopeCollisionHorizontal(&rect)
 
         rect.origin.y += alina.velocityY * dt
-        let wasOnGround = alina.onGround
         alina.onGround = false
         resolveAxis(&rect, axis: .vertical)
         checkSlopeCollisionVertical(&rect)
         checkPlatformCollision(&rect)
-
-        if !wasOnGround && alina.onGround && alina.velocityY < 0 {
-            alina.velocityY = 0
-        }
 
         alina.position = CGPoint(x: rect.midX, y: rect.midY)
         checkHeadBonk()
@@ -284,9 +259,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private enum Axis { case horizontal, vertical }
 
     private func resolveAxis(_ rect: inout CGRect, axis: Axis) {
-        for tile in solidRects {
-            guard rect.intersects(tile) else { continue }
-
+        for tile in solidRects where rect.intersects(tile) {
             switch axis {
             case .horizontal:
                 if alina.velocityX > 0 {
@@ -308,270 +281,170 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
 
-    private func checkSlopeCollisionHorizontal(_ rect: inout CGRect) {
-        let feetY = rect.minY + 2
-        let leftX = rect.minX
-        let rightX = rect.maxX
-
-        for (slopeRect, kind) in slopeRects {
-            if slopeRect.maxY > feetY && slopeRect.minY < feetY + 4 {
-                if alina.velocityX > 0 && rightX >= slopeRect.minX - 2 && rightX <= slopeRect.minX + 4 {
-                    let normal = slopeNormal(for: kind, at: CGPoint(x: rightX, y: feetY), in: slopeRect)
-                    if let normal = normal, normal.dy > 0 {
-                        let targetY = slopeRect.minY + (rightX - slopeRect.minX) * (normal.dy / max(abs(normal.dx), 0.001))
-                        if targetY > feetY && targetY < feetY + 8 {
-                            rect.origin.y = targetY - rect.height / 2
-                            alina.onGround = true
-                            alina.velocityY = 0
-                        }
-                    }
-                } else if alina.velocityX < 0 && leftX <= slopeRect.maxX + 2 && leftX >= slopeRect.maxX - 4 {
-                    let normal = slopeNormal(for: kind, at: CGPoint(x: leftX, y: feetY), in: slopeRect)
-                    if let normal = normal, normal.dy > 0 {
-                        let targetY = slopeRect.minY + (leftX - slopeRect.minX) * (normal.dy / max(abs(normal.dx), 0.001))
-                        if targetY > feetY && targetY < feetY + 8 {
-                            rect.origin.y = targetY - rect.height / 2
-                            alina.onGround = true
-                            alina.velocityY = 0
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private func checkSlopeCollisionVertical(_ rect: inout CGRect) {
-        guard alina.velocityY < 0 else { return }
-
-        let centerX = rect.midX
-        let feetY = rect.minY
-
-        for (slopeRect, kind) in slopeRects {
-            if centerX > slopeRect.minX && centerX < slopeRect.maxX {
-                if feetY <= slopeRect.maxY && feetY >= slopeRect.minY - 4 {
-                    let normal = slopeNormal(for: kind, at: CGPoint(x: centerX, y: feetY), in: slopeRect)
-                    if let normal = normal, normal.dy > 0 {
-                        let t = (centerX - slopeRect.minX) / slopeRect.width
-                        let slopeHeight = slopeRect.maxY - (slopeRect.maxY - slopeRect.minY) * abs(t - 0.5) * 2
-                        if feetY <= slopeHeight + 4 && feetY >= slopeHeight - 2 {
-                            rect.origin.y = slopeHeight
-                            alina.onGround = true
-                            alina.velocityY = 0
-
-                            if abs(alina.velocityX) > 50 {
-                                alina.velocityX += normal.dx * 200 * 0.016
-                            }
-                        }
-                    }
-                }
+        guard alina.velocityY <= 0 else { return }
+        for (slopeRect, kind) in slopeRects where rect.midX > slopeRect.minX && rect.midX < slopeRect.maxX {
+            let t = (rect.midX - slopeRect.minX) / slopeRect.width
+            let rising = kind == .slopeUpRight || kind == .slopeDownLeft
+            let surface = slopeRect.minY + slopeRect.height * (rising ? t : 1 - t)
+            if rect.minY <= surface + 4 && rect.minY >= surface - 10 {
+                rect.origin.y = surface
+                alina.onGround = true
+                alina.velocityY = 0
             }
         }
     }
 
     private func checkPlatformCollision(_ rect: inout CGRect) {
-        guard alina.velocityY < 0 else { return }
-
-        let centerX = rect.midX
+        guard alina.velocityY <= 0 else { return }
         let feetY = rect.minY
 
-        for platformRect in platformRects {
-            if centerX > platformRect.minX + 4 && centerX < platformRect.maxX - 4 {
-                if feetY <= platformRect.maxY + 4 && feetY >= platformRect.maxY - 4 {
-                    rect.origin.y = platformRect.maxY
-                    alina.onGround = true
-                    alina.velocityY = 0
-                }
+        for platformRect in platformRects where rect.maxX > platformRect.minX + 2 && rect.minX < platformRect.maxX - 2 {
+            if feetY <= platformRect.maxY && feetY >= platformRect.maxY - 10 {
+                rect.origin.y = platformRect.maxY
+                alina.onGround = true
+                alina.velocityY = 0
             }
         }
 
         for platform in movingPlatforms {
-            let platformRect = CGRect(x: platform.node.position.x - 64, y: platform.node.position.y - 7, width: 128, height: 14)
-            if centerX > platformRect.minX + 4 && centerX < platformRect.maxX - 4 {
-                if feetY <= platformRect.maxY + 4 && feetY >= platformRect.maxY - 4 {
-                    rect.origin.y = platformRect.maxY
-                    alina.onGround = true
-                    alina.velocityY = 0
-                    alina.velocityX += platform.node.position.x - platform.path[platform.currentIndex].x
-                }
+            let top = platform.node.position.y + 10
+            let minX = platform.node.position.x - 64
+            let maxX = platform.node.position.x + 64
+            if rect.maxX > minX && rect.minX < maxX && feetY <= top && feetY >= top - 12 {
+                rect.origin.y = top
+                alina.onGround = true
+                alina.velocityY = 0
             }
-        }
-    }
-
-    private func slopeNormal(for kind: TileKind, at point: CGPoint, in rect: CGRect) -> CGVector? {
-        let localX = point.x - rect.minX
-        let tileSize = GameConstants.tileSize
-        let t = localX / tileSize
-
-        switch kind {
-        case .slopeUpRight:
-            return CGVector(dx: -t, dy: 1 - t).normalized()
-        case .slopeUpLeft:
-            return CGVector(dx: t - 1, dy: 1 - t).normalized()
-        case .slopeDownRight:
-            return CGVector(dx: t, dy: t).normalized()
-        case .slopeDownLeft:
-            return CGVector(dx: 1 - t, dy: t).normalized()
-        default:
-            return nil
         }
     }
 
     private func checkHeadBonk() {
-        let head = CGRect(x: alina.position.x - 8, y: alina.position.y + 8, width: 16, height: 8)
+        guard alina.velocityY > 0 || alina.onGround == false else { return }
+        let head = CGRect(x: alina.position.x - 8, y: alina.position.y + 12, width: 16, height: 6)
+
         for block in questionBlocks where !block.revealed {
             let blockRect = CGRect(x: block.position.x - 16, y: block.position.y - 16, width: 32, height: 32)
-            if head.intersects(blockRect) && alina.velocityY > 0 {
-                block.bump()
-                block.revealed = true
-                block.color = block.blockKind == .question ? SKColor.gray.withAlphaComponent(0.5) : block.color
-                coins += 1
-                spawnCoinPop(at: block.position)
-                alina.velocityY = 0
-            }
+            guard head.intersects(blockRect) && alina.velocityY >= 0 else { continue }
+            block.bump()
+            block.revealed = true
+            block.markUsed()
+            alina.velocityY = 0
+            openBloomBlock(block)
         }
+
         for block in brickBlocks {
             let blockRect = CGRect(x: block.position.x - 16, y: block.position.y - 16, width: 32, height: 32)
-            if head.intersects(blockRect) && alina.velocityY > 0 {
+            guard head.intersects(blockRect) && alina.velocityY >= 0 else { continue }
+            alina.velocityY = 0
+            block.hitCount += 1
+            if block.hitCount >= 2 || alina.bloom {
+                GameGraphics.burst(
+                    at: block.position, in: builtLevel?.worldNode ?? self,
+                    colors: [SKColor(hex: 0xE09466), SKColor(hex: 0xB0643F), SKColor(hex: 0x76CF63)], count: 8, speed: 200
+                )
+                block.removeFromParent()
+                brickBlocks.removeAll { $0 == block }
+                solidRects.removeAll { $0 == blockRect }
+            } else {
                 block.bump()
-                block.hitCount += 1
-                if block.hitCount >= 2 {
-                    let blockRect = CGRect(x: block.position.x - 16, y: block.position.y - 16, width: 32, height: 32)
-                    spawnBrickDebris(at: block.position)
-                    block.removeFromParent()
-                    brickBlocks.removeAll { $0 == block }
-                    solidRects.removeAll { $0 == blockRect }
-                }
-                alina.velocityY = 0
             }
         }
     }
 
-    private func spawnCoinPop(at position: CGPoint) {
-        let label = SKLabelNode(fontNamed: "Helvetica-Bold")
-        label.text = "+1"
-        label.fontSize = 18
-        label.fontColor = GameGraphics.goldHighlight()
-        label.position = position
-        label.zPosition = 15
-        addChild(label)
-        label.run(SKAction.sequence([
-            SKAction.group([
-                SKAction.moveBy(x: 0, y: 30, duration: 0.6),
-                SKAction.fadeOut(withDuration: 0.6)
-            ]),
-            SKAction.removeFromParent()
-        ]))
-    }
+    /// The first bloom block and every third one after it hold a power-up; the rest pop petals.
+    private func openBloomBlock(_ block: BlockNode) {
+        defer { bloomBlocksOpened += 1 }
+        let world = builtLevel?.worldNode ?? self
+        let holdsPowerUp = bloomBlocksOpened % 3 == 0
+        let kind: CollectibleKind? = holdsPowerUp ? (!alina.bloom ? .sunbloom : (!alina.hasRibbon ? .ribbon : nil)) : nil
 
-    private func spawnBrickDebris(at position: CGPoint) {
-        for _ in 0..<6 {
-            let debris = SKShapeNode(rectOf: CGSize(width: 6, height: 6), cornerRadius: 1)
-            debris.fillColor = SKColor(red: 0.55, green: 0.4, blue: 0.25, alpha: 1)
-            debris.strokeColor = .clear
-            debris.position = position
-            debris.zPosition = 10
-            addChild(debris)
-            let angle = CGFloat.random(in: 0...CGFloat.pi * 2)
-            let speed = CGFloat.random(in: 100...200)
-            let dx = cos(angle) * speed
-            let dy = sin(angle) * speed + 150
-            debris.run(SKAction.sequence([
-                SKAction.group([
-                    SKAction.moveBy(x: dx * 0.5, y: dy * 0.5, duration: 0.5),
-                    SKAction.rotate(byAngle: CGFloat.random(in: -2...2), duration: 0.5),
-                    SKAction.fadeOut(withDuration: 0.5)
-                ]),
-                SKAction.removeFromParent()
-            ]))
+        if let kind, let theme = builtLevel?.theme {
+            let item = CollectibleNode(kind: kind, theme: theme)
+            item.position = CGPoint(x: block.position.x, y: block.position.y + 32)
+            world.addChild(item)
+            item.emerge()
+            collectibles.append(item)
+        } else {
+            petals += 1
+            GameGraphics.popText("+1", color: SKColor(hex: 0xC13B73), at: CGPoint(x: block.position.x, y: block.position.y + 30), in: world)
         }
     }
 
     private func handleEnemyCollision(_ enemy: EnemyNode) {
-        let enemyRect = CGRect(x: enemy.position.x - enemy.size.width / 2, y: enemy.position.y - enemy.size.height / 2, width: enemy.size.width, height: enemy.size.height)
+        let enemyRect = CGRect(
+            x: enemy.position.x - enemy.size.width / 2, y: enemy.position.y - enemy.size.height / 2,
+            width: enemy.size.width, height: enemy.size.height
+        )
         let playerRect = alina.collisionRect
         guard playerRect.intersects(enemyRect) else { return }
 
-        let playerFeet = playerRect.minY
-        let enemyTop = enemyRect.maxY
-        let falling = alina.velocityY < 0
-        let stompWindow = playerFeet >= enemyTop - 10
-
-        if falling && stompWindow {
+        let stomping = alina.velocityY < 0 && playerRect.minY >= enemyRect.maxY - 12
+        if stomping && enemy.enemyKind != .spiky {
             let defeated = enemy.stomp()
             alina.applyBounce()
-            spawnStompEffect(at: enemy.position)
+            GameGraphics.burst(at: enemy.position, in: builtLevel?.worldNode ?? self, colors: [SKColor(hex: 0x5E52A0), .white], count: 8)
+            if defeated {
+                petals += enemy.enemyKind == .boss ? 10 : 2
+                GameGraphics.popText(
+                    enemy.enemyKind == .boss ? "+10" : "+2", color: SKColor(hex: 0xC13B73),
+                    at: CGPoint(x: enemy.position.x, y: enemy.position.y + 24), in: builtLevel?.worldNode ?? self
+                )
+            }
             if enemy.enemyKind == .boss && defeated {
                 bossDefeated = true
             }
-        } else if alina.stompGraceTimer <= 0 && alina.hurtCooldown <= 0 {
-            alina.knockback(from: enemy.position.x)
-            loseLife()
+        } else if alina.stompGraceTimer <= 0 {
+            takeHit(fromX: enemy.position.x)
         }
     }
 
-    private func spawnStompEffect(at position: CGPoint) {
-        let poof = SKEmitterNode()
-        poof.numParticlesToEmit = 8
-        poof.particleBirthRate = 200
-        poof.particleLifetime = 0.3
-        poof.particleLifetimeRange = 0.1
-        poof.particlePositionRange = CGVector(dx: 16, dy: 8)
-        poof.emissionAngle = .pi / 2
-        poof.emissionAngleRange = .pi / 2
-        poof.particleSpeed = 80
-        poof.particleSpeedRange = 40
-        poof.particleAlpha = 0.8
-        poof.particleAlphaSpeed = -2.5
-        poof.particleScale = 0.2
-        poof.particleScaleRange = 0.1
-        poof.particleScaleSpeed = -0.3
-        poof.particleColor = SKColor(white: 0.8, alpha: 1)
-        poof.zPosition = 15
-        poof.position = position
-        addChild(poof)
-        poof.run(SKAction.sequence([SKAction.wait(forDuration: 0.4), SKAction.removeFromParent()]))
+    private func takeHit(fromX x: CGFloat) {
+        guard alina.hurtCooldown <= 0 else { return }
+        hits += 1
+        let shielded = alina.absorbHit()
+        alina.knockback(from: x)
+        if !shielded {
+            loseHeart()
+        }
     }
 
-    private func checkCollectibles(_ level: BuiltLevel) {
-        let playerRect = alina.collisionRect
-        for collectible in level.collectibles where collectible.parent != nil {
-            let cRect = CGRect(x: collectible.position.x - 12, y: collectible.position.y - 12, width: 24, height: 24)
-            if playerRect.intersects(cRect) {
-                collectible.collect()
-                if collectible.kind == .coin {
-                    coins += 1
-                    spawnCoinPop(at: collectible.position)
-                } else {
-                    crystals += 1
-                    spawnCrystalPop(at: collectible.position)
-                }
+    private func loseHeart() {
+        hearts -= 1
+        if hearts <= 0 {
+            fail(reason: "Alina ran out of hearts.")
+        }
+    }
+
+    private func checkCollectibles() {
+        let playerRect = alina.collisionRect.insetBy(dx: -4, dy: -4)
+        let world = builtLevel?.worldNode ?? self
+        for item in collectibles where item.parent != nil && item.alpha > 0.5 {
+            let itemRect = CGRect(x: item.position.x - 12, y: item.position.y - 12, width: 24, height: 24)
+            guard playerRect.intersects(itemRect) else { continue }
+            item.collect()
+            switch item.kind {
+            case .coin:
+                petals += 1
+                GameGraphics.burst(at: item.position, in: world, colors: [SKColor(hex: 0xFF8DBE), SKColor(hex: 0xF6C343)], count: 6, speed: 90)
+            case .crystal:
+                shards += 1
+                GameGraphics.burst(at: item.position, in: world, colors: [SKColor(hex: 0xF6C343), .white], count: 12)
+                GameGraphics.popText("Shard \(shards)", color: SKColor(hex: 0xA86A00), at: CGPoint(x: item.position.x, y: item.position.y + 26), in: world)
+            case .sunbloom:
+                alina.grantBloom()
+                GameGraphics.popText("Sunbloom!", color: SKColor(hex: 0xA86A00), at: CGPoint(x: item.position.x, y: item.position.y + 26), in: world)
+            case .ribbon:
+                alina.grantRibbon()
+                GameGraphics.popText("Glow Ribbon!", color: SKColor(hex: 0xC13B73), at: CGPoint(x: item.position.x, y: item.position.y + 26), in: world)
             }
         }
-    }
-
-    private func spawnCrystalPop(at position: CGPoint) {
-        let label = SKLabelNode(fontNamed: "Helvetica-Bold")
-        label.text = "★"
-        label.fontSize = 22
-        label.fontColor = GameGraphics.crystalColor()
-        label.position = position
-        label.zPosition = 15
-        addChild(label)
-        label.run(SKAction.sequence([
-            SKAction.group([
-                SKAction.moveBy(x: 0, y: 40, duration: 0.8),
-                SKAction.scale(to: 1.5, duration: 0.4),
-                SKAction.scale(to: 1.0, duration: 0.4),
-                SKAction.fadeOut(withDuration: 0.8)
-            ]),
-            SKAction.removeFromParent()
-        ]))
+        collectibles.removeAll { $0.parent == nil }
     }
 
     private func checkFlag(_ level: BuiltLevel) {
         guard mission.objective == .reachFlag, let flag = level.flagNode else { return }
-        let flagVisualX = flag.position.x + 14
-        let flagRect = CGRect(x: flagVisualX - 16, y: flag.position.y - 24, width: 32, height: 48)
+        let flagRect = CGRect(x: flag.position.x - 16, y: flag.position.y - 16, width: 32, height: 64)
         if alina.collisionRect.intersects(flagRect) {
             win()
         }
@@ -580,80 +453,106 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func checkHazards(_ level: BuiltLevel) {
         let playerRect = alina.collisionRect
         for hazard in level.hazards {
-            let hRect = CGRect(x: hazard.position.x - 12, y: hazard.position.y - 8, width: 24, height: 16)
-            if playerRect.intersects(hRect) {
-                loseLife()
+            let hazardRect = CGRect(x: hazard.position.x - 13, y: hazard.position.y - 16, width: 26, height: 14)
+            if playerRect.intersects(hazardRect) {
+                takeHit(fromX: hazard.position.x)
+                if alina.hurtCooldown > 0 && alina.velocityY < 300 { alina.velocityY = 420 }
                 return
             }
         }
     }
 
     private func checkFallDeath() {
-        if alina.position.y < -64 {
-            loseLife()
+        guard alina.position.y < -48 else { return }
+        hits += 1
+        loseHeart()
+        if !finished {
+            alina.resetForRespawn(at: checkpoint)
         }
     }
 
-    private func loseLife() {
-        lives -= 1
-        if lives <= 0 {
-            outcome = .lost
-            onOutcome?(.lost, coins)
-        } else {
-            alina.position = builtLevel?.playerStart ?? alina.position
-            alina.velocityX = 0
-            alina.velocityY = 0
-            alina.hurtCooldown = 0
-        }
+    /// Halfway through the level, the next safe landing becomes the respawn point.
+    private func updateCheckpoint() {
+        guard alina.onGround, alina.position.x > mapWidth * 0.5, checkpoint.x < mapWidth * 0.5 else { return }
+        checkpoint = alina.position
+        GameGraphics.popText("Checkpoint", color: SKColor(hex: 0x1F7A50), at: CGPoint(x: alina.position.x, y: alina.position.y + 40), in: builtLevel?.worldNode ?? self)
     }
+
+    // MARK: Outcome
 
     private func win() {
-        outcome = .won
-        GameProgress.shared.recordCompletion(missionID: mission.id, coins: coins)
-        onOutcome?(.won, coins)
+        guard !finished else { return }
+        finished = true
+        let previousBest = GameProgress.shared.bestTime(for: mission.id)
+        let result = MissionResult(
+            missionID: mission.id,
+            petals: petals,
+            time: elapsed,
+            hits: hits,
+            parTime: parTime,
+            stars: [true, elapsed <= parTime, hits == 0],
+            newBestTime: previousBest.map { elapsed < $0 } ?? true
+        )
+        GameProgress.shared.recordCompletion(result)
+        GameGraphics.burst(
+            at: alina.position, in: builtLevel?.worldNode ?? self,
+            colors: [SKColor(hex: 0xF6C343), SKColor(hex: 0xFF8DBE), .white], count: 24, speed: 260
+        )
+        run(.sequence([.wait(forDuration: 0.9), .run { [weak self] in self?.onOutcome?(.won(result)) }]))
+    }
+
+    private func fail(reason: String) {
+        guard !finished else { return }
+        finished = true
+        alina.run(.sequence([.moveBy(x: 0, y: 30, duration: 0.2), .fadeOut(withDuration: 0.3)]))
+        run(.sequence([.wait(forDuration: 0.7), .run { [weak self] in self?.onOutcome?(.lost(reason: reason)) }]))
     }
 
     private func updateCamera(delta: CGFloat) {
-        guard let level = builtLevel else { return }
-        let mapWidth = level.map.worldSize().width
-        let viewWidth = size.width
-        var targetX = alina.position.x + 100
-        targetX = max(viewWidth / 2, min(mapWidth - viewWidth / 2, targetX))
-        let targetY = max(size.height / 2, alina.position.y + 40)
-
-        let currentX = cameraNode.position.x
-        let currentY = cameraNode.position.y
-        let lerpFactor: CGFloat = 1.0 - exp(-12.0 * delta)
+        let visible = visibleRect
+        var targetX = alina.position.x + 80
+        targetX = mapWidth <= visible.width ? mapWidth / 2 : max(visible.width / 2, min(mapWidth - visible.width / 2, targetX))
+        let targetY = max(visible.height / 2, alina.position.y + 60)
+        let factor = 1.0 - exp(-10.0 * delta)
         cameraNode.position = CGPoint(
-            x: currentX + (targetX - currentX) * lerpFactor,
-            y: currentY + (targetY - currentY) * lerpFactor
+            x: cameraNode.position.x + (targetX - cameraNode.position.x) * factor,
+            y: cameraNode.position.y + (targetY - cameraNode.position.y) * factor
         )
     }
 
-    func resume() {
-        outcome = .playing
-    }
+    // MARK: HUD
 
-    var hudState: (lives: Int, coins: Int, crystals: Int, missionTitle: String, elapsed: CGFloat, timeLimit: Int?) {
-        (lives, coins, crystals, mission?.title ?? "", elapsed, mission?.timeLimit)
-    }
-
-    func transitionToNextMission(_ nextMission: Mission, completion: @escaping () -> Void) {
-        let newScene = GameScene()
-        newScene.mission = nextMission
-        newScene.onOutcome = onOutcome
-        newScene.onTransitionComplete = completion
-        transitionManager?.transition(to: newScene, type: .slide(direction: .left, duration: 0.6), completion: completion)
-    }
-
-    private struct SeededRNG {
-        private var state: UInt64
-        init(seed: UInt64) { state = seed == 0 ? 1 : seed }
-        mutating func next() -> UInt64 {
-            state ^= state << 13
-            state ^= state >> 7
-            state ^= state << 17
-            return state
+    var hudSnapshot: HUDSnapshot {
+        guard let mission else { return HUDSnapshot() }
+        let progress: CGFloat
+        switch mission.objective {
+        case .reachFlag:
+            let goal = builtLevel?.flagNode?.position.x ?? mapWidth
+            progress = min(1, max(0, alina.position.x / max(1, goal)))
+        case .collectN:
+            progress = CGFloat(shards) / CGFloat(max(1, mission.collectRequired))
+        case .defeatBoss:
+            let boss = builtLevel?.enemies.first { $0.enemyKind == .boss }
+            progress = CGFloat(boss?.stompHits ?? 0) / 3
         }
+        let seconds: Int
+        if let timeLimit {
+            seconds = max(0, Int(ceil(timeLimit - elapsed)))
+        } else {
+            seconds = Int(elapsed)
+        }
+        return HUDSnapshot(
+            hearts: max(0, hearts),
+            maxHearts: maxHearts,
+            petals: petals,
+            shards: shards,
+            shardTarget: mission.objective == .collectN ? mission.collectRequired : nil,
+            bossHits: builtLevel?.enemies.first { $0.enemyKind == .boss }?.stompHits ?? 0,
+            seconds: seconds,
+            countdown: timeLimit != nil,
+            bloom: alina.bloom,
+            ribbon: alina.hasRibbon,
+            progress: progress
+        )
     }
 }

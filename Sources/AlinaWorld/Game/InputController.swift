@@ -113,6 +113,21 @@ final class InputController {
         return false
     }
 
+    /// Drops one-shot presses left over from the previous screen.
+    func clearPresses() {
+        escapePressed = false
+        enterPressed = false
+        pausePressed = false
+        upPressed = false
+        downPressed = false
+        fullscreenPressed = false
+        tabPressed = false
+        if mode == .menu {
+            left = false
+            right = false
+        }
+    }
+
     private func resetHeld() {
         left = false
         right = false
@@ -128,6 +143,10 @@ final class InputController {
     }
 
     private func handle(_ event: NSEvent) {
+        // Keys typed in the Settings window must not drive the game behind it.
+        if let gameWindow = AppWindowController.gameWindow, event.window !== gameWindow {
+            return
+        }
         if event.type == .flagsChanged {
             sprint = event.modifierFlags.contains(.shift)
             return
@@ -147,11 +166,11 @@ final class InputController {
                 if mode == .menu { enterPressed = true }
                 else { jumpHeld = true }
             case 13:
-                if mode == .gameplay { jumpHeld = true }
+                if mode == .gameplay { jumpHeld = true } else { upPressed = true; downPressed = false }
             case 126:
                 if mode == .gameplay { jumpHeld = true }
                 else { upPressed = true; downPressed = false }
-            case 125:
+            case 125, 1:
                 if mode == .menu { downPressed = true; upPressed = false }
             case 53:
                 escapePressed = true

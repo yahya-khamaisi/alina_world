@@ -12,11 +12,11 @@ final class BlockNode: SKNode {
     let blockKind: BlockKind
     var hitCount = 0
     var revealed = false
-    private let visualNode: SKNode
+    private let visualNode: SKSpriteNode
 
-    init(kind: BlockKind, palette: WorldPalette) {
+    init(kind: BlockKind, theme: WorldTheme, topExposed: Bool = true) {
         blockKind = kind
-        visualNode = GameGraphics.makeBlockNode(kind: kind, palette: palette)
+        visualNode = GameGraphics.makeBlockNode(kind: kind, theme: theme, topExposed: topExposed)
 
         super.init()
         name = "block"
@@ -27,9 +27,9 @@ final class BlockNode: SKNode {
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
 
-    var color: SKColor {
-        get { (visualNode.children.first as? SKShapeNode)?.fillColor ?? .clear }
-        set { (visualNode.children.first as? SKShapeNode)?.fillColor = newValue }
+    /// Swaps a bloom block to its emptied stone look.
+    func markUsed() {
+        visualNode.texture = PixelArt.texture(.bloomBlockUsed)
     }
 
     func bump() {

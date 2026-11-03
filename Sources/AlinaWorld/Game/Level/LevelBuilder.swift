@@ -9,7 +9,9 @@ struct BuiltLevel {
     let enemies: [EnemyNode]
     let hazards: [SKSpriteNode]
     let movingPlatforms: [MovingPlatform]
-    let palette: WorldPalette
+    let theme: WorldTheme
+    /// Top of the ground strip in world units, used to seat the parallax hills.
+    let groundTop: CGFloat
 }
 
 struct MovingPlatform {
@@ -23,11 +25,10 @@ struct MovingPlatform {
 
 final class LevelBuilder {
     static func build(mission: Mission, in scene: SKScene) -> BuiltLevel {
-        let palette = WorldPalettes.palette(for: mission.world)
-        scene.backgroundColor = palette.sky
+        let theme = WorldThemes.theme(for: mission.world)
+        scene.backgroundColor = SKColor(hex: theme.horizon)
 
-        let expandedRows = expandRows(mission.rows, seed: mission.layoutSeed, difficulty: mission.difficulty)
-        let map = TileMap(rows: expandedRows)
+        let map = TileMap(rows: padRows(mission.rows))
         let worldNode = SKNode()
         worldNode.name = "world"
         scene.addChild(worldNode)
@@ -37,7 +38,8 @@ final class LevelBuilder {
         var hazards: [SKSpriteNode] = []
         var movingPlatforms: [MovingPlatform] = []
         var flagNode: SKNode?
-        var playerStart = CGPoint(x: GameConstants.tileSize * 2, y: GameConstants.tileSize * 3)
+        var crawlerCount = 0
+        let spikyEnabled = mission.id >= 10
 
         for row in 0..<map.height {
             for col in 0..<map.width {
@@ -46,71 +48,59 @@ final class LevelBuilder {
                 let center = CGPoint(x: rect.midX, y: rect.midY)
 
                 switch kind {
-                case .solid:
-                    let block = BlockNode(kind: .solid, palette: palette)
-                    block.position = center
-                    worldNode.addChild(block)
-                case .ground:
-                    let block = BlockNode(kind: .ground, palette: palette)
-                    block.position = center
-                    worldNode.addChild(block)
-                case .brick:
-                    let block = BlockNode(kind: .brick, palette: palette)
-                    block.position = center
-                    worldNode.addChild(block)
-                case .question:
-                    let block = BlockNode(kind: .question, palette: palette)
-                    block.position = center
-                    worldNode.addChild(block)
-                case .pipe:
-                    let block = BlockNode(kind: .pipe, palette: palette)
+                case .solid, .ground, .brick, .question, .pipe:
+                    let topExposed = !map.isSolid(map.kind(at: col, row: row - 1))
+                    let block = BlockNode(kind: blockKind(for: kind), theme: theme, topExposed: topExposed)
                     block.position = center
                     worldNode.addChild(block)
                 case .coin:
-                    let coin = CollectibleNode(kind: .coin, palette: palette)
+                    let coin = CollectibleNode(kind: .coin, theme: theme)
                     coin.position = center
                     worldNode.addChild(coin)
                     collectibles.append(coin)
                 case .crystal:
-                    let crystal = CollectibleNode(kind: .crystal, palette: palette)
+                    let crystal = CollectibleNode(kind: .crystal, theme: theme)
                     crystal.position = center
                     worldNode.addChild(crystal)
                     collectibles.append(crystal)
                 case .flag:
-                    let pole = GameGraphics.makeFlagPole(height: 80)
-                    pole.position = center
-                    pole.zPosition = 2
-                    worldNode.addChild(pole)
-                    flagNode = pole
+                    let beacon = GameGraphics.makeBeacon()
+                    beacon.position = center
+                    beacon.zPosition = 2
+                    worldNode.addChild(beacon)
+                    flagNode = beacon
                 case .enemy:
-                    let enemy = EnemyNode(kind: .crawler, palette: palette)
-                    enemy.configure(at: center)
+                    crawlerCount += 1
+                    let spiky = spikyEnabled && crawlerCount % 3 == 0
+                    let enemy = EnemyNode(kind: spiky ? .spiky : .crawler, theme: theme)
+                    enemy.configure(onTileWithCenter: center)
                     worldNode.addChild(enemy)
                     enemies.append(enemy)
                 case .boss:
-                    let boss = EnemyNode(kind: .boss, palette: palette, patrol: 120)
-                    boss.configure(at: center)
+                    let boss = EnemyNode(kind: .boss, theme: theme, patrol: 120)
+                    boss.configure(onTileWithCenter: center)
                     worldNode.addChild(boss)
                     enemies.append(boss)
                 case .hazard:
-                    let spike = createSpikeNode(at: center, palette: palette)
-                    worldNode.addChild(spike)
-                    hazards.append(spike)
+                    let thorns = GameGraphics.makeThorns(theme: theme)
+                    thorns.position = center
+                    thorns.name = "hazard"
+                    thorns.zPosition = 2
+                    worldNode.addChild(thorns)
+                    hazards.append(thorns)
                 case .slopeUpRight, .slopeUpLeft, .slopeDownRight, .slopeDownLeft:
-                    let slope = createSlopeNode(kind: kind, rect: rect, palette: palette)
-                    worldNode.addChild(slope)
+                    worldNode.addChild(createSlopeNode(kind: kind, rect: rect, theme: theme))
                 case .platform:
-                    let platform = createPlatformNode(at: center, palette: palette)
-                    worldNode.addChild(platform)
+                    let pad = GameGraphics.makeLeafPad(theme: theme)
+                    pad.position = CGPoint(x: center.x, y: rect.maxY)
+                    pad.zPosition = 1
+                    worldNode.addChild(pad)
                 case .movingPlatform:
-                    let platform = createMovingPlatformNode(at: center, palette: palette)
-                    if let platformData = map.movingPlatforms.first(where: { $0.col == col && $0.row == row }) {
-                        let movingPlatform = MovingPlatform(
-                            node: platform,
-                            path: platformData.path,
-                            speed: platformData.speed
-                        )
-                        movingPlatforms.append(movingPlatform)
+                    let platform = GameGraphics.makeCloudPad()
+                    platform.position = center
+                    platform.zPosition = 1
+                    if let data = map.movingPlatforms.first(where: { $0.col == col && $0.row == row }) {
+                        movingPlatforms.append(MovingPlatform(node: platform, path: data.path, speed: data.speed))
                     }
                     worldNode.addChild(platform)
                 case .empty:
@@ -120,197 +110,146 @@ final class LevelBuilder {
         }
 
         for placement in mission.enemies {
-            let col = placement.x
-            let row = placement.y
-            let rect = map.tileRect(col: col, row: row)
-            let center = CGPoint(x: rect.midX, y: rect.midY)
+            let rect = map.tileRect(col: placement.x, row: placement.y)
             let kind: EnemyNode.EnemyKind
             switch placement.kind.lowercased() {
             case "flyer", "fly": kind = .flyer
             case "boss": kind = .boss
+            case "spiky": kind = .spiky
             default: kind = .crawler
             }
-            let enemy = EnemyNode(kind: kind, palette: palette, patrol: placement.patrol ?? 80)
-            enemy.configure(at: center)
+            let enemy = EnemyNode(kind: kind, theme: theme, patrol: placement.patrol ?? 80)
+            enemy.configure(onTileWithCenter: CGPoint(x: rect.midX, y: rect.midY))
             worldNode.addChild(enemy)
             enemies.append(enemy)
         }
 
-        if let firstGround = map.solidRects().first {
-            playerStart = CGPoint(x: firstGround.minX + GameConstants.tileSize * 1.5, y: firstGround.maxY + GameConstants.playerHeight / 2)
-        }
+        addScenery(to: worldNode, map: map, theme: theme, seed: mission.layoutSeed)
 
         return BuiltLevel(
             map: map,
             worldNode: worldNode,
-            playerStart: playerStart,
+            playerStart: startPoint(in: map),
             flagNode: flagNode,
             collectibles: collectibles,
             enemies: enemies,
             hazards: hazards,
             movingPlatforms: movingPlatforms,
-            palette: palette
+            theme: theme,
+            groundTop: groundTop(in: map)
         )
     }
 
-    private static func createSpikeNode(at position: CGPoint, palette: WorldPalette) -> SKSpriteNode {
-        let container = SKNode()
-        let spikeCount = 3
-        for i in 0..<spikeCount {
-            let path = CGMutablePath()
-            path.move(to: CGPoint(x: -10, y: 0))
-            path.addLine(to: CGPoint(x: 0, y: 16))
-            path.addLine(to: CGPoint(x: 10, y: 0))
-            path.closeSubpath()
-
-            let spike = SKShapeNode(path: path)
-            spike.fillColor = palette.hazard
-            spike.strokeColor = SKColor(red: 0.6, green: 0.1, blue: 0.1, alpha: 1)
-            spike.lineWidth = 1.5
-            spike.position = CGPoint(x: CGFloat(i - 1) * 12, y: 0)
-            container.addChild(spike)
+    private static func blockKind(for tile: TileKind) -> BlockKind {
+        switch tile {
+        case .solid: return .solid
+        case .brick: return .brick
+        case .question: return .question
+        case .pipe: return .pipe
+        default: return .ground
         }
-
-        let base = SKShapeNode(rectOf: CGSize(width: 32, height: 8), cornerRadius: 2)
-        base.fillColor = palette.ground
-        base.strokeColor = .clear
-        base.position = CGPoint(x: 0, y: -12)
-        container.addChild(base)
-
-        let node = SKSpriteNode(color: .clear, size: CGSize(width: 32, height: 24))
-        node.position = position
-        node.addChild(container)
-        node.name = "hazard"
-        node.zPosition = 2
-        return node
     }
 
-    private static func createSlopeNode(kind: TileKind, rect: CGRect, palette: WorldPalette) -> SKNode {
+    /// Spawn above the highest solid tile in column 2, so floating blocks never become the start.
+    private static func startPoint(in map: TileMap) -> CGPoint {
+        let col = min(2, map.width - 1)
+        for row in 0..<map.height where map.isSolid(map.kind(at: col, row: row)) {
+            let rect = map.tileRect(col: col, row: row)
+            return CGPoint(x: rect.midX, y: rect.maxY + GameConstants.playerHeight / 2)
+        }
+        return CGPoint(x: GameConstants.tileSize * 2, y: GameConstants.tileSize * 3)
+    }
+
+    private static func groundTop(in map: TileMap) -> CGFloat {
+        for row in 0..<map.height where map.kind(at: 0, row: row) == .ground {
+            return map.tileRect(col: 0, row: row).maxY
+        }
+        return GameConstants.tileSize * 2
+    }
+
+    /// Trees, bushes and flowers planted behind the tiles on exposed ground.
+    private static func addScenery(to worldNode: SKNode, map: TileMap, theme: WorldTheme, seed: Int) {
+        var rng = SeededRNG(seed: UInt64(seed) &* 2654435761)
+        var col = 4
+        while col < map.width - 3 {
+            guard let row = surfaceRow(in: map, col: col) else { col += 1; continue }
+            let rect = map.tileRect(col: col, row: row)
+            let roll = rng.next() % 100
+            let clear = (1...3).allSatisfy { map.kind(at: col, row: row - $0) == .empty }
+
+            let node: SKSpriteNode?
+            if roll < 14 && clear && surfaceRow(in: map, col: col + 1) == row {
+                node = PixelArt.node(.tree, theme: theme, scale: 4)
+                col += 4
+            } else if roll < 30 {
+                node = PixelArt.node(.bush, theme: theme, scale: 3)
+                col += 2
+            } else if roll < 52 {
+                node = PixelArt.node(.flower, theme: theme, scale: 3)
+                col += 1
+            } else {
+                node = nil
+                col += 1
+            }
+            if let node {
+                node.anchorPoint = CGPoint(x: 0.5, y: 0)
+                node.position = CGPoint(x: rect.midX, y: rect.minY - 2)
+                node.zPosition = -2
+                worldNode.addChild(node)
+            }
+        }
+    }
+
+    /// Row of the first empty tile directly above ground in this column.
+    private static func surfaceRow(in map: TileMap, col: Int) -> Int? {
+        for row in 1..<map.height where map.kind(at: col, row: row) == .ground {
+            return map.kind(at: col, row: row - 1) == .empty ? row - 1 : nil
+        }
+        return nil
+    }
+
+    private static func createSlopeNode(kind: TileKind, rect: CGRect, theme: WorldTheme) -> SKNode {
         let path = CGMutablePath()
-        let tileSize = GameConstants.tileSize
+        let half = GameConstants.tileSize / 2
 
         switch kind {
         case .slopeUpRight:
-            path.move(to: CGPoint(x: -tileSize/2, y: -tileSize/2))
-            path.addLine(to: CGPoint(x: tileSize/2, y: tileSize/2))
-            path.addLine(to: CGPoint(x: tileSize/2, y: -tileSize/2))
+            path.move(to: CGPoint(x: -half, y: -half))
+            path.addLine(to: CGPoint(x: half, y: half))
+            path.addLine(to: CGPoint(x: half, y: -half))
         case .slopeUpLeft:
-            path.move(to: CGPoint(x: tileSize/2, y: -tileSize/2))
-            path.addLine(to: CGPoint(x: -tileSize/2, y: tileSize/2))
-            path.addLine(to: CGPoint(x: -tileSize/2, y: -tileSize/2))
+            path.move(to: CGPoint(x: half, y: -half))
+            path.addLine(to: CGPoint(x: -half, y: half))
+            path.addLine(to: CGPoint(x: -half, y: -half))
         case .slopeDownRight:
-            path.move(to: CGPoint(x: -tileSize/2, y: tileSize/2))
-            path.addLine(to: CGPoint(x: tileSize/2, y: -tileSize/2))
-            path.addLine(to: CGPoint(x: -tileSize/2, y: -tileSize/2))
+            path.move(to: CGPoint(x: -half, y: half))
+            path.addLine(to: CGPoint(x: half, y: -half))
+            path.addLine(to: CGPoint(x: -half, y: -half))
         case .slopeDownLeft:
-            path.move(to: CGPoint(x: tileSize/2, y: tileSize/2))
-            path.addLine(to: CGPoint(x: -tileSize/2, y: -tileSize/2))
-            path.addLine(to: CGPoint(x: tileSize/2, y: -tileSize/2))
+            path.move(to: CGPoint(x: half, y: half))
+            path.addLine(to: CGPoint(x: -half, y: -half))
+            path.addLine(to: CGPoint(x: half, y: -half))
         default:
             break
         }
         path.closeSubpath()
 
         let slope = SKShapeNode(path: path)
-        slope.fillColor = palette.block.withAlphaComponent(0.9)
-        slope.strokeColor = palette.ground.withAlphaComponent(0.5)
-        slope.lineWidth = 1.5
-        slope.position = rect.origin
+        slope.fillColor = SKColor(hex: theme.dirt.0)
+        slope.strokeColor = SKColor(hex: theme.grass.1)
+        slope.lineWidth = 4
+        slope.position = CGPoint(x: rect.midX, y: rect.midY)
         slope.zPosition = 1
-
-        let grass = SKShapeNode(rectOf: CGSize(width: tileSize - 4, height: 6), cornerRadius: 1)
-        grass.fillColor = palette.accent.withAlphaComponent(0.8)
-        grass.strokeColor = .clear
-        grass.position = CGPoint(x: 0, y: tileSize/2 - 3)
-        grass.zPosition = 2
-        slope.addChild(grass)
-
         return slope
     }
 
-    private static func createPlatformNode(at position: CGPoint, palette: WorldPalette) -> SKNode {
-        let tileSize = GameConstants.tileSize
-        let platform = SKShapeNode(rectOf: CGSize(width: tileSize * 3, height: 12), cornerRadius: 3)
-        platform.fillColor = palette.block
-        platform.strokeColor = palette.ground.withAlphaComponent(0.5)
-        platform.lineWidth = 2
-        platform.position = position
-        platform.zPosition = 1
-
-        let highlight = SKShapeNode(rectOf: CGSize(width: tileSize * 3 - 4, height: 3), cornerRadius: 1)
-        highlight.fillColor = SKColor(white: 1.0, alpha: 0.3)
-        highlight.strokeColor = .clear
-        highlight.position = CGPoint(x: 0, y: 5)
-        highlight.zPosition = 2
-        platform.addChild(highlight)
-
-        return platform
-    }
-
-    private static func createMovingPlatformNode(at position: CGPoint, palette: WorldPalette) -> SKNode {
-        let tileSize = GameConstants.tileSize
-        let platform = SKShapeNode(rectOf: CGSize(width: tileSize * 4, height: 14), cornerRadius: 4)
-        platform.fillColor = SKColor(red: 0.6, green: 0.7, blue: 0.8, alpha: 1)
-        platform.strokeColor = SKColor(red: 0.3, green: 0.4, blue: 0.6, alpha: 1)
-        platform.lineWidth = 2
-        platform.position = position
-        platform.zPosition = 1
-
-        let highlight = SKShapeNode(rectOf: CGSize(width: tileSize * 4 - 4, height: 3), cornerRadius: 1)
-        highlight.fillColor = SKColor(white: 1.0, alpha: 0.4)
-        highlight.strokeColor = .clear
-        highlight.position = CGPoint(x: 0, y: 6)
-        highlight.zPosition = 2
-        platform.addChild(highlight)
-
-        let gear1 = SKShapeNode(circleOfRadius: 4)
-        gear1.fillColor = SKColor(red: 0.4, green: 0.5, blue: 0.7, alpha: 1)
-        gear1.strokeColor = .clear
-        gear1.position = CGPoint(x: -tileSize * 1.5, y: -8)
-        gear1.zPosition = 2
-        platform.addChild(gear1)
-
-        let gear2 = SKShapeNode(circleOfRadius: 4)
-        gear2.fillColor = SKColor(red: 0.4, green: 0.5, blue: 0.7, alpha: 1)
-        gear2.strokeColor = .clear
-        gear2.position = CGPoint(x: tileSize * 1.5, y: -8)
-        gear2.zPosition = 2
-        platform.addChild(gear2)
-
-        let rotate = SKAction.rotate(byAngle: .pi * 2, duration: 2.0)
-        gear1.run(SKAction.repeatForever(rotate))
-        gear2.run(SKAction.repeatForever(rotate.reversed()))
-
-        return platform
-    }
-
-    private static func expandRows(_ rows: [String], seed: Int, difficulty: MissionDifficulty) -> [String] {
-        guard rows.isEmpty == false else { return rows }
+    private static func padRows(_ rows: [String]) -> [String] {
         let width = rows.map(\.count).max() ?? 0
-        var result = rows.map { row -> String in
-            if row.count < width {
-                return row + String(repeating: ".", count: width - row.count)
-            }
-            return row
-        }
-
-        var rng = SeededRNG(seed: UInt64(seed))
-        let extraPads = difficulty == .hard ? 2 : (difficulty == .normal ? 1 : 0)
-        if extraPads > 0 && result.count >= 2 {
-            let groundIndex = result.count - 2
-            var ground = Array(result[groundIndex])
-            for i in stride(from: 8, to: ground.count - 8, by: 12) {
-                if rng.next() % 3 == 0 {
-                    ground[i] = "="
-                }
-            }
-            result[groundIndex] = String(ground)
-        }
-        return result
+        return rows.map { $0.count < width ? $0 + String(repeating: ".", count: width - $0.count) : $0 }
     }
 }
 
-private struct SeededRNG {
+struct SeededRNG {
     private var state: UInt64
 
     init(seed: UInt64) {
