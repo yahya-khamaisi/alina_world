@@ -39,11 +39,15 @@ final class EnemyNode: SKNode {
         stompHitsRequired = kind == .boss ? 3 : 1
 
         let frames: [PixelSprite]
-        switch kind {
-        case .crawler: frames = [.gloomling, .gloomlingStep]
-        case .spiky: frames = [.thornbeetle]
-        case .flyer: frames = [.mothwisp, .mothwispFlap]
-        case .boss: frames = [.guardian]
+        switch (kind, theme.key) {
+        // Act IV worlds dress the crawler and flyer as their own minions.
+        case (.crawler, "frost"): frames = [.frostpuff]
+        case (.crawler, "coral"): frames = [.shellcrab]
+        case (.flyer, "starfall"): frames = [.starwisp]
+        case (.crawler, _): frames = [.gloomling, .gloomlingStep]
+        case (.spiky, _): frames = [.thornbeetle]
+        case (.flyer, _): frames = [.mothwisp, .mothwispFlap]
+        case (.boss, _): frames = [.guardian]
         }
         visualNode = PixelArt.node(frames[0], theme: theme, scale: 3)
 

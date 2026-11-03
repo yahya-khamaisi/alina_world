@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 
 enum SoundEffect {
-    case jump, petal, shard, stomp, powerUp, hurt, bump, brickBreak, checkpoint, pause, select
+    case jump, doubleJump, spring, petal, shard, stomp, powerUp, hurt, bump, brickBreak, checkpoint, pause, select
 }
 
 /// Real-time chiptune synthesizer: two pulse voices, a triangle bass, noise drums and four
@@ -91,11 +91,19 @@ final class ChiptuneSynth {
         var frequency: Double = 0
         var envelope: Float = 0
         var gate = false
-        let level: Float
-        let sustain: Float
+        var level: Float
+        var sustain: Float
+        var wave: Instrument.Wave = .pulse25
+        var decayCoefficient: Float = 0
+        var vibrato: Double = 0
+
+        init(level: Float, sustain: Float) {
+            self.level = level
+            self.sustain = sustain
+        }
     }
 
-    private enum Wave { case pulse50, pulse25, triangle, noise }
+    private enum Wave { case pulse50, pulse25, triangle, noise, sine, bell, steel }
 
     private struct Segment {
         let wave: Wave
@@ -129,11 +137,19 @@ final class ChiptuneSynth {
     private var sampleInStep: Double = 0
     private var lead = Voice(level: 0.15, sustain: 0.55)
     private var harmony = Voice(level: 0.06, sustain: 0.45)
-    private var bass = Voice(level: 0.22, sustain: 0.85)
+    private var bass: Voice = {
+        var voice = Voice(level: 0.22, sustain: 0.85)
+        voice.wave = .triangle
+        return voice
+    }()
     private var kickTime: Double = 1
     private var kickPhase: Double = 0
     private var snareTime: Double = 1
     private var hatTime: Double = 1
+    private var drumLevel: Float = 1
+    private var swing: Double = 0
+    private var baseSamplesPerStep: Double = 1
+    private var vibratoTime: Double = 0
 
     private var fade: Float = 0
     private var duck: Float = 1
@@ -223,10 +239,11 @@ final class ChiptuneSynth {
                 sampleInStep -= samplesPerStep
                 advance(song)
             }
-            music = voiceSample(&lead, wave: .pulse25)
-                + voiceSample(&harmony, wave: .pulse25)
-                + voiceSample(&bass, wave: .triangle)
-                + drumSample()
+            vibratoTime += 1 / sampleRate
+            music = voiceSample(&lead)
+                + voiceSample(&harmony)
+                + voiceSample(&bass)
+                + drumSample() * drumLevel
         }
 
         let echoed = echo[echoIndex]
@@ -240,7 +257,7 @@ final class ChiptuneSynth {
         }
 
         let mixed = musicBus + sfx * effectsVolume
-        lowPass += (mixed - lowPass) * 0.5
+        lowPass += (mixed - lowPass) * 0.4
         let boosted = lowPass * 2.2
         return boosted / (1 + abs(boosted))
     }
@@ -253,13 +270,28 @@ final class ChiptuneSynth {
         harmony.gate = false
         bass.gate = false
         if let newSong {
-            samplesPerStep = sampleRate * 60 / newSong.bpm / 2
+            baseSamplesPerStep = sampleRate * 60 / newSong.bpm / 2
+            samplesPerStep = baseSamplesPerStep
             sampleInStep = samplesPerStep
+            drumLevel = newSong.drumLevel
+            swing = newSong.swing
+            configure(&lead, newSong.leadVoice)
+            configure(&harmony, newSong.harmonyVoice)
         }
+    }
+
+    private func configure(_ voice: inout Voice, _ instrument: Instrument) {
+        voice.wave = instrument.wave
+        voice.level = instrument.level
+        voice.sustain = instrument.sustain
+        voice.vibrato = instrument.vibrato
+        voice.decayCoefficient = Float(1 - exp(-1 / (instrument.decay * sampleRate)))
     }
 
     private func advance(_ song: Song) {
         step += 1
+        // Swing: on-beat eighths run long, off-beat ones short.
+        samplesPerStep = baseSamplesPerStep * (step % 2 == 0 ? 1 + swing : 1 - swing)
         if step >= song.length {
             if song.loops {
                 step = 0
@@ -296,15 +328,26 @@ final class ChiptuneSynth {
         }
     }
 
-    private func voiceSample(_ voice: inout Voice, wave: Wave) -> Float {
+    private func voiceSample(_ voice: inout Voice) -> Float {
         if voice.gate {
-            voice.envelope += (voice.sustain - voice.envelope) * decayCoefficient
+            let coefficient = voice.decayCoefficient > 0 ? voice.decayCoefficient : decayCoefficient
+            voice.envelope += (voice.sustain - voice.envelope) * coefficient
         } else {
             voice.envelope -= voice.envelope * releaseCoefficient
         }
         guard voice.envelope > 0.0005 else { return 0 }
-        voice.phase += voice.frequency / sampleRate
+        let wobble = voice.vibrato > 0 ? 1 + voice.vibrato * sin(2 * .pi * 5.2 * vibratoTime) : 1
+        voice.phase += voice.frequency * wobble / sampleRate
         voice.phase -= voice.phase.rounded(.down)
+        let wave: Wave
+        switch voice.wave {
+        case .pulse50: wave = .pulse50
+        case .pulse25: wave = .pulse25
+        case .triangle: wave = .triangle
+        case .sine: wave = .sine
+        case .bell: wave = .bell
+        case .steel: wave = .steel
+        }
         return oscillator(wave, phase: voice.phase) * voice.envelope * voice.level
     }
 
@@ -352,6 +395,12 @@ final class ChiptuneSynth {
         case .pulse25: return phase < 0.25 ? 0.5 : -0.5
         case .triangle: return Float(4 * abs(phase - 0.5) - 1)
         case .noise: return noise() * 0.6
+        case .sine: return Float(sin(2 * .pi * phase)) * 0.8
+        case .bell:
+            // Fundamental plus a quiet octave, like a music box tine.
+            return Float(sin(2 * .pi * phase) * 0.65 + sin(4 * .pi * phase) * 0.25)
+        case .steel:
+            return Float(sin(2 * .pi * phase) * 0.6 + sin(6 * .pi * phase) * 0.25 + sin(4 * .pi * phase) * 0.1)
         }
     }
 
@@ -371,6 +420,10 @@ final class ChiptuneSynth {
         switch effect {
         case .jump:
             return [tone(.pulse25, 320, 760, 0.13, 0.45)]
+        case .doubleJump:
+            return [tone(.sine, 660, 1320, 0.1, 0.5), tone(.sine, 1320, 1760, 0.08, 0.35)]
+        case .spring:
+            return [tone(.triangle, 220, 880, 0.18, 0.7)]
         case .petal:
             return [tone(.pulse50, 988, nil, 0.05, 0.35), tone(.pulse50, 1319, nil, 0.12, 0.35)]
         case .shard:

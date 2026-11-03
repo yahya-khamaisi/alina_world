@@ -32,7 +32,7 @@ struct WorldTheme {
     let particles: AmbientParticles
 
     enum AmbientParticles {
-        case petals, rain, leaves, embers, dust, mist, sparkles, storm, motes
+        case petals, rain, leaves, embers, dust, mist, sparkles, storm, motes, snow, bubbles
     }
 
     /// Palette overrides consumed by `PixelCatalog` for world-tinted sprites.
@@ -112,6 +112,27 @@ enum WorldThemes {
             sky: [0xF49FA6, 0xF7B4AA, 0xF9C7B0, 0xFBD8BA, 0xFDE8C8],
             grass: (0xE8A6C8, 0xC77AA5, 0x8E4C79), dirt: (0x8F6C8C, 0x5E4660),
             leaves: (0xB46A9E, 0x7C3F6C), hills: (0xF2C6D2, 0xE2A9BC, 0xCC8EA6), particles: .motes
+        ),
+        WorldTheme(
+            key: "frost", name: "Frostpeak Hollow",
+            blurb: "Snow drifts and slippery ice. Plan each landing before you leap.",
+            sky: [0x9FC7EA, 0xB0D2EE, 0xC2DDF2, 0xD4E8F6, 0xE6F2FA],
+            grass: (0xF4FAFF, 0xD8EAF7, 0x9DBAD6), dirt: (0xA9C9E8, 0x86A9CC),
+            leaves: (0x7FA7CF, 0x55799E), hills: (0xE6F0FA, 0xCFE0F1, 0xB5CCE6), particles: .snow
+        ),
+        WorldTheme(
+            key: "coral", name: "Coral Lagoon",
+            blurb: "Warm tide pools and bouncy shells. Ride a shell to the high ledges.",
+            sky: [0x7FD3E6, 0x93DBEA, 0xA8E3EE, 0xBEEAF2, 0xD7F3F7],
+            grass: (0xFFF0C8, 0xF2DCA0, 0xD9B76E), dirt: (0xF2E3C0, 0xD9C29A),
+            leaves: (0x4FB07A, 0x2D7F55), hills: (0xC6F0EE, 0xA6E2E0, 0x86D0CF), particles: .bubbles
+        ),
+        WorldTheme(
+            key: "starfall", name: "Starfall Sky",
+            blurb: "Islands of cloud under a sky of wishes. Double jump between them.",
+            sky: [0x5E52A0, 0x7466B5, 0x8C7DC8, 0xA898DA, 0xC6B8EA],
+            grass: (0xFFFFFF, 0xEDE6FF, 0xC3B1F0), dirt: (0xD7CBF6, 0xB9A6EC),
+            leaves: (0xFFFFFF, 0xDCD0F6), hills: (0xB9A6EC, 0x9B86DA, 0x8170C4), particles: .sparkles
         )
     ]
 

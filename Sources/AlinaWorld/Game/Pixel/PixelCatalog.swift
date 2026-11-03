@@ -6,6 +6,7 @@ enum PixelSprite: String, CaseIterable {
     case petal, petalTurn, crystal, sunbloom, ribbon, heart, heartEmpty
     case bloomBlock, bloomBlockUsed, mossbrick, groundTop, groundFill, stone, log, thorns, leafPad, cloudPad, beacon
     case sun, cloud, tree, bush, flower, hillFar, hillNear
+    case frostpuff, shellcrab, starwisp, springShell
 }
 
 /// Every sprite in the game as a character map. `.` is transparent; letters index `basePalette`,
@@ -23,7 +24,8 @@ enum PixelCatalog {
         "a": 0xE6E0D4, "e": 0xC7BDAD, "d": 0x938674, // stone
         "q": 0xE09466, "w": 0xB0643F, "z": 0xF4DDBE, "t": 0x6B4A30, // brick, mortar, wood
         "i": 0xA6E37E, "g": 0x76CF63, "x": 0x3E9147, "u": 0xD9A86C, "s": 0xA98563,
-        "v": 0x55B85C, "V": 0x2F8A45, "k": 0xBDE6D2, "b": 0x9CD4BD, "j": 0x86C2AA
+        "v": 0x55B85C, "V": 0x2F8A45, "k": 0xBDE6D2, "b": 0x9CD4BD, "j": 0x86C2AA,
+        "f": 0xFF7E6B, "p": 0xFFC0B0, "U": 0xA9C9E8, "J": 0x3E7FC4 // coral, coral light, ice, ice shadow
     ]
 
     static func rows(for sprite: PixelSprite) -> [String] {
@@ -63,6 +65,10 @@ enum PixelCatalog {
         case .bush: return bush
         case .flower: return flower
         case .hillFar: return hillFar
+        case .frostpuff: return frostpuff
+        case .shellcrab: return shellcrab
+        case .starwisp: return starwisp
+        case .springShell: return springShell
         case .hillNear:
             return hillFar.map { row in
                 String(row.map { ch in ch == "b" ? "g" : ch == "k" ? "i" : ch == "j" ? "x" : ch })
@@ -169,6 +175,40 @@ enum PixelCatalog {
         "NNNNNNNNNNNNNNNN",
         ".NNNN.NNNN.NNNN.",
         "..NN...NN...NN.."
+    ]
+
+    // Act IV minions: Frostpeak, Coral Lagoon and Starfall variants of the crawler and flyer.
+
+    private static let frostpuff = [
+        "....UUUU....", "..UUOOOOUU..", ".UOOOOOOOOU.", ".UOOJOOJOOU.", ".UOOJOOJOOU.",
+        "UOOOOOOOOOOU", "UOOOOUUOOOOU", "UOOOOOOOOOOU", ".UUU.UU.UUU.", "..U..UU..U.."
+    ]
+    private static let shellcrab = [
+        ".f........f.", "fpf......fpf", ".f..ffff..f.", "...fppppf...", "..ffLffLff..",
+        ".ffppppppff.", "ffppppppppff", ".ffffffffff.", ".f.f....f.f.", "f..f....f..f"
+    ]
+    private static let starwisp = [
+        ".....G......", "....GYG.....", "GGGGGYGGGGG.", ".GYYLYLYYG..", "..GYYYYYG...",
+        ".GYYG.GYYG..", ".GG.....GG..", "............"
+    ]
+    /// Coral Lagoon spring: landing on it bounces Alina high.
+    private static let springShell = [
+        "................",
+        "................",
+        "......ffff......",
+        "....ffppppff....",
+        "...fpfpffpfpf...",
+        "..fppfppppfppf..",
+        "..fpfppffppfpf..",
+        ".fppfppffppfppf.",
+        ".fpfppfffppfpff.",
+        ".fppfppffppfppf.",
+        "fppfppfppfppfppf",
+        "ffffffffffffffff",
+        "..uuuuuuuuuuuu..",
+        ".uuuuuuuuuuuuuu.",
+        "uuuuuuuuuuuuuuuu",
+        "uuuusuuuuuusuuuu"
     ]
 
     // MARK: Items

@@ -27,6 +27,14 @@ final class AlinaNode: SKNode {
     private(set) var bloom = false
     /// Glow Ribbon: hold jump while falling to glide.
     private(set) var hasRibbon = false
+    /// One extra jump in the air; refilled on landing and by stomping an enemy.
+    private(set) var airJumps = 1
+    /// Set for one frame when the air jump fires, so the scene can leave a sparkle puff.
+    var didAirJump = false
+    /// Frostpeak ice: less grip, so Alina slides before she stops.
+    var slippery = false
+    /// Spring launches rise to full height even with jump released.
+    private var fullRiseTimer: CGFloat = 0
 
     private var currentState: PlayerState = .idle
     private var stateTimer: CGFloat = 0
@@ -161,8 +169,8 @@ final class AlinaNode: SKNode {
         let walkSpeed: CGFloat = difficulty == .hard ? 260 : (difficulty == .normal ? 230 : 200)
         let runSpeed: CGFloat = difficulty == .hard ? 360 : (difficulty == .normal ? 320 : 280)
         let maxSpeed = input.sprint ? runSpeed : walkSpeed
-        let accel: CGFloat = onGround ? 1800 : 1200
-        let friction: CGFloat = onGround ? 1400 : 400
+        let accel: CGFloat = onGround ? (slippery ? 900 : 1800) : 1200
+        let friction: CGFloat = onGround ? (slippery ? 260 : 1400) : 400
         let jumpVelocity: CGFloat = input.sprint ? 720 : 640
         let gravity = GameConstants.gravity
 
@@ -191,7 +199,9 @@ final class AlinaNode: SKNode {
         velocityX = max(-maxSpeed, min(maxSpeed, velocityX))
 
         // Buffer only fresh presses so holding jump (to glide) never auto-hops on landing.
-        let jumpPressed = input.jumpHeld && !lastJumpHeld
+        // Always consume the tap, so a press seen as an edge doesn't fire a second (air) jump next frame.
+        let tapped = input.consumeJumpTap()
+        let jumpPressed = (input.jumpHeld && !lastJumpHeld) || tapped
         lastJumpHeld = input.jumpHeld
         if jumpPressed {
             jumpBufferTimer = 0.12
@@ -201,10 +211,12 @@ final class AlinaNode: SKNode {
 
         if onGround {
             coyoteTimer = 0.12
+            airJumps = 1
         } else if coyoteTimer > 0 {
             coyoteTimer -= dt
         }
 
+        didAirJump = false
         if jumpBufferTimer > 0 && coyoteTimer > 0 {
             velocityY = jumpVelocity
             jumpBufferTimer = 0
@@ -212,9 +224,19 @@ final class AlinaNode: SKNode {
             onGround = false
             setState(.jump)
             ChiptuneEngine.shared.play(.jump)
+        } else if jumpPressed && !onGround && airJumps > 0 {
+            // Double jump: a fresh press in the air resets the fall into a slightly smaller hop.
+            airJumps -= 1
+            velocityY = jumpVelocity * 0.9
+            jumpBufferTimer = 0
+            didAirJump = true
+            currentState = .fall
+            setState(.jump)
+            ChiptuneEngine.shared.play(.doubleJump)
         }
 
-        if !input.jumpHeld && velocityY > 200 {
+        if fullRiseTimer > 0 { fullRiseTimer -= dt }
+        if !input.jumpHeld && fullRiseTimer <= 0 && velocityY > 200 {
             velocityY -= gravity * 0.45 * dt
         }
 
@@ -325,9 +347,11 @@ final class AlinaNode: SKNode {
         visualRoot.zRotation = currentState == .skid ? (facingRight ? -0.12 : 0.12) : 0
     }
 
-    func applyBounce() {
-        velocityY = GameConstants.stompBounceVelocity
+    func applyBounce(velocity: CGFloat = GameConstants.stompBounceVelocity) {
+        velocityY = velocity
         onGround = false
+        airJumps = 1
+        fullRiseTimer = velocity > GameConstants.stompBounceVelocity ? 0.5 : 0
         stompGraceTimer = 0.35
         setState(.bounce)
     }

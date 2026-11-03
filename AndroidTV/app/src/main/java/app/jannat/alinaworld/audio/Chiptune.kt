@@ -11,7 +11,7 @@ import kotlin.math.floor
 import kotlin.math.pow
 import kotlin.math.sin
 
-enum class SoundEffect { Jump, Petal, Shard, Stomp, PowerUp, Hurt, Bump, BrickBreak, Checkpoint, Pause, Select }
+enum class SoundEffect { Jump, DoubleJump, Spring, Petal, Shard, Stomp, PowerUp, Hurt, Bump, BrickBreak, Checkpoint, Pause, Select }
 
 /**
  * Real-time chiptune synthesizer, ported from the Mac app: two pulse voices, a triangle bass, noise drums and
@@ -74,14 +74,16 @@ object Chiptune {
 }
 
 class ChiptuneSynth(private val sampleRate: Double) {
-    private class Voice(val level: Float, val sustain: Float) {
+    private class Voice(var level: Float, var sustain: Float, var wave: Wave = Wave.Pulse25) {
+        var decay = 0f
+        var vibrato = 0.0
         var phase = 0.0
         var frequency = 0.0
         var envelope = 0f
         var gate = false
     }
 
-    private enum class Wave { Pulse50, Pulse25, Triangle, Noise }
+    private enum class Wave { Pulse50, Pulse25, Triangle, Noise, Sine, Bell, Steel }
     private class Segment(val wave: Wave, val from: Double, val to: Double, val duration: Double, val volume: Float)
     private class EffectVoice(val segments: List<Segment> = emptyList()) {
         var index = 0
@@ -105,11 +107,15 @@ class ChiptuneSynth(private val sampleRate: Double) {
     private var sampleInStep = 0.0
     private val lead = Voice(0.15f, 0.55f)
     private val harmony = Voice(0.06f, 0.45f)
-    private val bass = Voice(0.22f, 0.85f)
+    private val bass = Voice(0.22f, 0.85f, Wave.Triangle)
     private var kickTime = 1.0
     private var kickPhase = 0.0
     private var snareTime = 1.0
     private var hatTime = 1.0
+    private var drumLevel = 1f
+    private var swing = 0.0
+    private var baseSamplesPerStep = 1.0
+    private var vibratoTime = 0.0
 
     private var fade = 0f
     private var duck = 1f
@@ -178,8 +184,8 @@ class ChiptuneSynth(private val sampleRate: Double) {
                 sampleInStep -= samplesPerStep
                 advance(s)
             }
-            music = voiceSample(lead, Wave.Pulse25) + voiceSample(harmony, Wave.Pulse25) +
-                voiceSample(bass, Wave.Triangle) + drumSample()
+            vibratoTime += 1 / sampleRate
+            music = voiceSample(lead) + voiceSample(harmony) + voiceSample(bass) + drumSample() * drumLevel
         }
 
         val echoed = echo[echoIndex]
@@ -191,7 +197,7 @@ class ChiptuneSynth(private val sampleRate: Double) {
         for (e in effects) if (e.active) sfx += effectSample(e)
 
         val mixed = musicBus + sfx * effectsVolume
-        lowPass += (mixed - lowPass) * 0.5f
+        lowPass += (mixed - lowPass) * 0.4f
         val boosted = lowPass * 2.2f
         return boosted / (1 + abs(boosted))
     }
@@ -202,13 +208,35 @@ class ChiptuneSynth(private val sampleRate: Double) {
         sampleInStep = 0.0
         lead.gate = false; harmony.gate = false; bass.gate = false
         if (newSong != null) {
-            samplesPerStep = sampleRate * 60 / newSong.bpm / 2
+            baseSamplesPerStep = sampleRate * 60 / newSong.bpm / 2
+            samplesPerStep = baseSamplesPerStep
             sampleInStep = samplesPerStep
+            drumLevel = newSong.drumLevel
+            swing = newSong.swing
+            configure(lead, newSong.leadVoice)
+            configure(harmony, newSong.harmonyVoice)
         }
+    }
+
+    private fun configure(voice: Voice, instrument: Instrument) {
+        voice.wave = when (instrument.wave) {
+            Instrument.Wave.Pulse50 -> Wave.Pulse50
+            Instrument.Wave.Pulse25 -> Wave.Pulse25
+            Instrument.Wave.Triangle -> Wave.Triangle
+            Instrument.Wave.Sine -> Wave.Sine
+            Instrument.Wave.Bell -> Wave.Bell
+            Instrument.Wave.Steel -> Wave.Steel
+        }
+        voice.level = instrument.level
+        voice.sustain = instrument.sustain
+        voice.vibrato = instrument.vibrato
+        voice.decay = (1 - exp(-1 / (instrument.decay * sampleRate))).toFloat()
     }
 
     private fun advance(s: Song) {
         step++
+        // Swing: on-beat eighths run long, off-beat ones short.
+        samplesPerStep = baseSamplesPerStep * (if (step % 2 == 0) 1 + swing else 1 - swing)
         if (step >= s.length) {
             if (s.loops) step = 0 else {
                 lead.gate = false; harmony.gate = false; bass.gate = false
@@ -238,13 +266,14 @@ class ChiptuneSynth(private val sampleRate: Double) {
         }
     }
 
-    private fun voiceSample(voice: Voice, wave: Wave): Float {
-        if (voice.gate) voice.envelope += (voice.sustain - voice.envelope) * decay
+    private fun voiceSample(voice: Voice): Float {
+        if (voice.gate) voice.envelope += (voice.sustain - voice.envelope) * (if (voice.decay > 0) voice.decay else decay)
         else voice.envelope -= voice.envelope * release
         if (voice.envelope <= 0.0005f) return 0f
-        voice.phase += voice.frequency / sampleRate
+        val wobble = if (voice.vibrato > 0) 1 + voice.vibrato * sin(2 * Math.PI * 5.2 * vibratoTime) else 1.0
+        voice.phase += voice.frequency * wobble / sampleRate
         voice.phase -= floor(voice.phase)
-        return oscillator(wave, voice.phase) * voice.envelope * voice.level
+        return oscillator(voice.wave, voice.phase) * voice.envelope * voice.level
     }
 
     private fun drumSample(): Float {
@@ -287,6 +316,10 @@ class ChiptuneSynth(private val sampleRate: Double) {
         Wave.Pulse25 -> if (phase < 0.25) 0.5f else -0.5f
         Wave.Triangle -> (4 * abs(phase - 0.5) - 1).toFloat()
         Wave.Noise -> noise() * 0.6f
+        Wave.Sine -> sin(2 * Math.PI * phase).toFloat() * 0.8f
+        // Fundamental plus a quiet octave, like a music box tine.
+        Wave.Bell -> (sin(2 * Math.PI * phase) * 0.65 + sin(4 * Math.PI * phase) * 0.25).toFloat()
+        Wave.Steel -> (sin(2 * Math.PI * phase) * 0.6 + sin(6 * Math.PI * phase) * 0.25 + sin(4 * Math.PI * phase) * 0.1).toFloat()
     }
 
     private fun noise(): Float {
@@ -301,6 +334,8 @@ class ChiptuneSynth(private val sampleRate: Double) {
             Segment(wave, from, to ?: from, duration, volume)
         return when (effect) {
             SoundEffect.Jump -> listOf(tone(Wave.Pulse25, 320.0, 760.0, 0.13, 0.45f))
+            SoundEffect.DoubleJump -> listOf(tone(Wave.Sine, 660.0, 1320.0, 0.1, 0.5f), tone(Wave.Sine, 1320.0, 1760.0, 0.08, 0.35f))
+            SoundEffect.Spring -> listOf(tone(Wave.Triangle, 220.0, 880.0, 0.18, 0.7f))
             SoundEffect.Petal -> listOf(tone(Wave.Pulse50, 988.0, null, 0.05, 0.35f), tone(Wave.Pulse50, 1319.0, null, 0.12, 0.35f))
             SoundEffect.Shard -> listOf(784.0, 988.0, 1175.0, 1568.0, 1976.0).map { tone(Wave.Pulse25, it, null, 0.06, 0.45f) }
             SoundEffect.Stomp -> listOf(tone(Wave.Noise, 200.0, null, 0.04, 0.6f), tone(Wave.Pulse50, 260.0, 90.0, 0.1, 0.5f))

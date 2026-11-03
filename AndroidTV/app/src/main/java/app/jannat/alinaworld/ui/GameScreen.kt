@@ -82,11 +82,11 @@ private val gameplayControls: List<Pair<String, androidx.compose.ui.graphics.vec
     get() = if (Settings.autoRun) listOf(
         "◀ ▶" to Icons.Filled.DirectionsRun,
         "▼" to Icons.Filled.Stop,
-        "OK" to Icons.Filled.ArrowUpward,
+        "OK ×2" to Icons.Filled.ArrowUpward,
         "hold ▶" to Icons.Filled.Bolt
     ) else listOf(
         "◀ ▶" to Icons.Filled.DirectionsWalk,
-        "OK" to Icons.Filled.ArrowUpward,
+        "OK ×2" to Icons.Filled.ArrowUpward,
         "hold ▶" to Icons.Filled.Bolt
     )
 
@@ -187,10 +187,12 @@ private fun Hud(mission: Mission, hud: HudSnapshot, showHint: Boolean) {
         }
 
         if (mission.objective == Objective.ReachFlag) {
-            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)) { BeaconProgress(hud.progress) }
+            // Up top on TV, so the ground band stays free for the remote hints.
+            Box(Modifier.align(Alignment.TopCenter).padding(top = 14.dp)) { BeaconProgress(hud.progress) }
         }
         AnimatedVisibility(
-            showHint, Modifier.align(Alignment.BottomStart).padding(bottom = if (mission.objective == Objective.ReachFlag) 48.dp else 0.dp),
+            // In the dirt below the ground line, clear of where Alina runs.
+            showHint, Modifier.align(Alignment.BottomStart).offset(y = 16.dp),
             enter = fadeIn() + slideInVertically { it }, exit = fadeOut(tween(400)) + slideOutVertically { it }
         ) { ControlStrip(gameplayControls + ("Back" to Icons.Filled.Pause)) }
     }

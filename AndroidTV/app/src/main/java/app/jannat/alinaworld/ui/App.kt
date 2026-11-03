@@ -72,7 +72,7 @@ fun AlinaWorldApp() {
         when (route) {
             Route.Menu, Route.Map, is Route.Settings, is Route.Briefing -> Chiptune.play(Songs.title)
             is Route.Playing -> Missions.byId(route.id)?.let {
-                Chiptune.play(Songs.level(WorldThemes.index(it.world), it.objective == Objective.DefeatBoss))
+                Chiptune.play(Songs.world(WorldThemes.theme(it.world).key, it.objective == Objective.DefeatBoss))
             }
             is Route.Won -> Chiptune.play(Songs.victory)
             is Route.Lost -> Chiptune.play(Songs.defeat)

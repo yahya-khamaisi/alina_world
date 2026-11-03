@@ -76,6 +76,9 @@ struct RootView: View {
             InputController.shared.startMonitoring()
             InputController.shared.mode = .menu
             router.applyLaunchRoute(ProcessInfo.processInfo.environment["ALINA_START_ROUTE"])
+            #if DEBUG
+            DevInputScript.run(ProcessInfo.processInfo.environment["ALINA_INPUT_SCRIPT"])
+            #endif
         }
     }
 
@@ -86,7 +89,7 @@ struct RootView: View {
             audio.play(Songs.title)
         case .playing(let id):
             guard let mission = MissionLoader.mission(id: id) else { return }
-            audio.play(Songs.level(worldIndex: WorldThemes.index(of: mission.world), guardian: mission.objective == .defeatBoss))
+            audio.play(Songs.world(WorldThemes.theme(for: mission.world).key, guardian: mission.objective == .defeatBoss))
         case .victory:
             audio.play(Songs.victory)
         case .defeat:

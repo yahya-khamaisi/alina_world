@@ -91,7 +91,7 @@ struct ControlStrip: View {
 
     static let gameplay: [Entry] = [
         Entry(key: "← →", symbol: "figure.walk", label: "Move"),
-        Entry(key: "␣", symbol: "arrow.up", label: "Jump, hold to glide"),
+        Entry(key: "␣ ×2", symbol: "arrow.up", label: "Jump; press again in the air to double jump, hold to glide"),
         Entry(key: "⇧", symbol: "bolt.fill", label: "Sprint"),
         Entry(key: "esc", symbol: "pause.fill", label: "Pause")
     ]

@@ -83,7 +83,7 @@ fun MainMenuScreen() {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 Pill(44.dp) {
                     Sprite(PixelSprite.Crystal, 2f)
-                    BasicText("${GameProgress.crystalsRestored}/9", style = rounded(17.sp, FontWeight.ExtraBold))
+                    BasicText("${GameProgress.crystalsRestored}/${GameProgress.WORLD_COUNT}", style = rounded(17.sp, FontWeight.ExtraBold))
                 }
                 Pill(44.dp) {
                     Glyph(Icons.Filled.Star, Palette.gold, 20.dp)

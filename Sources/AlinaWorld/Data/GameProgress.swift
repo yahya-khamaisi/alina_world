@@ -11,7 +11,8 @@ final class GameProgress {
     private let playTimeKey = "alinaWorld.playTime"
     private let defaults = UserDefaults.standard
 
-    static let missionCount = 27
+    static let missionCount = 36
+    static let worldCount = 12
 
     var unlockedMission: Int {
         get { max(1, defaults.integer(forKey: unlockedKey).nonZeroOr(1)) }
@@ -53,7 +54,7 @@ final class GameProgress {
 
     /// Heart Crystals restored: one per world whose guardian mission is complete.
     var crystalsRestored: Int {
-        (0..<9).filter { isCompleted(missionID: $0 * 3 + 3) }.count
+        (0..<Self.worldCount).filter { isCompleted(missionID: $0 * 3 + 3) }.count
     }
 
     /// 0…1 share of all available stars.

@@ -70,10 +70,10 @@ struct MainMenuView: View {
         HStack(spacing: Space.s) {
             HStack(spacing: Space.s) {
                 PixelImage(sprite: .crystal, scale: 2)
-                Text("\(progress.crystalsRestored)/9")
+                Text("\(progress.crystalsRestored)/\(GameProgress.worldCount)")
             }
             .pill()
-            .accessibilityLabel("\(progress.crystalsRestored) of 9 Heart Crystals")
+            .accessibilityLabel("\(progress.crystalsRestored) of \(GameProgress.worldCount) Heart Crystals")
             HStack(spacing: Space.s) {
                 Image(systemName: "star.fill").foregroundStyle(Palette.gold)
                 Text("\(progress.totalStars)")

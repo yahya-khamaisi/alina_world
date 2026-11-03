@@ -1,6 +1,6 @@
 # AlinaWorld
 
-**AlinaWorld** is an original 2D platformer for macOS starring **Alina**, a girl from the Lumen Isles who must reclaim nine stolen Heart Crystals from the Night Crown across **27 missions**.
+**AlinaWorld** is an original 2D platformer for macOS starring **Alina**, a girl from the Lumen Isles who must reclaim twelve stolen Heart Crystals from the Night Crown across **36 missions** in four acts.
 
 Inspired by classic side-scrolling platformer feel (acceleration, sprint, variable jump, stomp attacks) — not Nintendo assets or trademarks.
 
@@ -24,7 +24,7 @@ The Lumen Isles stay awake thanks to nine Heart Crystals. The Night Crown scatte
 | ← → or A D | Move (in-game) |
 | ↑ ↓ ← → | Navigate menus / mission map |
 | Shift | Sprint |
-| Space, W, or ↑ | Jump (in-game) · hold while falling to glide with the Glow Ribbon |
+| Space, W, or ↑ | Jump (in-game) · press again in the air to double jump · hold while falling to glide with the Glow Ribbon |
 | Enter | Confirm / start mission / next mission |
 | F | Toggle fullscreen |
 | Esc | Back / pause |

@@ -20,6 +20,8 @@ final class InputController {
     private(set) var downPressed = false
     private(set) var fullscreenPressed = false
     private(set) var tabPressed = false
+    /// Latched on every fresh jump press, so a tap that goes down and up between frames still jumps.
+    private var jumpTapped = false
 
     var mode: Mode = .menu
 
@@ -97,6 +99,11 @@ final class InputController {
         return false
     }
 
+    func consumeJumpTap() -> Bool {
+        defer { jumpTapped = false }
+        return jumpTapped
+    }
+
     func consumeFullscreen() -> Bool {
         if fullscreenPressed {
             fullscreenPressed = false
@@ -115,6 +122,7 @@ final class InputController {
 
     /// Drops one-shot presses left over from the previous screen.
     func clearPresses() {
+        jumpTapped = false
         escapePressed = false
         enterPressed = false
         pausePressed = false
@@ -164,11 +172,11 @@ final class InputController {
                 if mode == .menu { left = false }
             case 49:
                 if mode == .menu { enterPressed = true }
-                else { jumpHeld = true }
+                else { if !event.isARepeat { jumpTapped = true }; jumpHeld = true }
             case 13:
-                if mode == .gameplay { jumpHeld = true } else { upPressed = true; downPressed = false }
+                if mode == .gameplay { if !event.isARepeat { jumpTapped = true }; jumpHeld = true } else { upPressed = true; downPressed = false }
             case 126:
-                if mode == .gameplay { jumpHeld = true }
+                if mode == .gameplay { if !event.isARepeat { jumpTapped = true }; jumpHeld = true }
                 else { upPressed = true; downPressed = false }
             case 125, 1:
                 if mode == .menu { downPressed = true; upPressed = false }

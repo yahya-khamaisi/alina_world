@@ -48,7 +48,7 @@ final class LevelBuilder {
                 let center = CGPoint(x: rect.midX, y: rect.midY)
 
                 switch kind {
-                case .solid, .ground, .brick, .question, .pipe:
+                case .solid, .ground, .brick, .question, .pipe, .spring:
                     let topExposed = !map.isSolid(map.kind(at: col, row: row - 1))
                     let block = BlockNode(kind: blockKind(for: kind), theme: theme, topExposed: topExposed)
                     block.position = center
@@ -146,6 +146,7 @@ final class LevelBuilder {
         case .brick: return .brick
         case .question: return .question
         case .pipe: return .pipe
+        case .spring: return .spring
         default: return .ground
         }
     }

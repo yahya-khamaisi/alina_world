@@ -48,7 +48,9 @@ import kotlinx.coroutines.delay
 fun MissionCompleteScreen(result: MissionResult) {
     val mission = Missions.byId(result.missionID)
     val next = Missions.byId(result.missionID + 1)
-    val finale = result.missionID == GameProgress.MISSION_COUNT
+    // The Night Crown falls at 27; Act IV's last guardian ends the game at 36.
+    val finale = result.missionID == 27 || result.missionID == GameProgress.MISSION_COUNT
+    val last = result.missionID == GameProgress.MISSION_COUNT
     val crystal = mission?.objective == Objective.DefeatBoss
     val theme = mission?.let { WorldThemes.theme(it.world) } ?: WorldThemes.ordered[0]
     var focus by remember { mutableIntStateOf(0) }
@@ -85,7 +87,7 @@ fun MissionCompleteScreen(result: MissionResult) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
-            BasicText(if (finale) "The Isles Shine!" else "Clear!", style = rounded(44.sp, FontWeight.Black))
+            BasicText(if (finale) (if (last) "Wish Granted!" else "The Isles Shine!") else "Clear!", style = rounded(44.sp, FontWeight.Black))
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 BigStar(result.stars[0], revealed > 0, 64.dp)
                 BigStar(result.stars[1], revealed > 1, 86.dp)
@@ -107,7 +109,7 @@ fun MissionCompleteScreen(result: MissionResult) {
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Tile(TileKind.Primary, 72.dp, focus == 0, Modifier.weight(1f)) { fg ->
-                    if (finale) Glyph(Icons.Filled.Map, fg, 32.dp) else {
+                    if (last) Glyph(Icons.Filled.Map, fg, 32.dp) else {
                         BasicText(next?.code ?: "", style = rounded(29.sp, FontWeight.Black, fg))
                         Glyph(Icons.Filled.ArrowForward, fg, 30.dp)
                     }

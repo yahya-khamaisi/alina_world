@@ -11,6 +11,8 @@ enum CollectibleKind {
 
 final class CollectibleNode: SKNode {
     let kind: CollectibleKind
+    /// Set on pickup so the fade-out frames can't count it again.
+    private(set) var collected = false
 
     init(kind: CollectibleKind, theme: WorldTheme) {
         self.kind = kind
@@ -58,6 +60,7 @@ final class CollectibleNode: SKNode {
     }
 
     func collect() {
+        collected = true
         removeAllActions()
         let burst = SKAction.group([
             SKAction.scale(to: 1.6, duration: 0.12),

@@ -12,7 +12,7 @@ object GameConstants {
     const val TILE_PIXEL = 2f
 }
 
-enum class AmbientParticles { Petals, Rain, Leaves, Embers, Dust, Mist, Sparkles, Storm, Motes }
+enum class AmbientParticles { Petals, Rain, Leaves, Embers, Dust, Mist, Sparkles, Storm, Motes, Snow, Bubbles }
 
 /** Per-world colors shared by the game renderer and the menus, as 0xRRGGBB. */
 class WorldTheme(
@@ -83,7 +83,19 @@ object WorldThemes {
         t("throne", "Night Crown Keep",
             intArrayOf(0xF49FA6, 0xF7B4AA, 0xF9C7B0, 0xFBD8BA, 0xFDE8C8),
             intArrayOf(0xE8A6C8, 0xC77AA5, 0x8E4C79), intArrayOf(0x8F6C8C, 0x5E4660),
-            intArrayOf(0xB46A9E, 0x7C3F6C), intArrayOf(0xF2C6D2, 0xE2A9BC, 0xCC8EA6), AmbientParticles.Motes)
+            intArrayOf(0xB46A9E, 0x7C3F6C), intArrayOf(0xF2C6D2, 0xE2A9BC, 0xCC8EA6), AmbientParticles.Motes),
+        t("frost", "Frostpeak Hollow",
+            intArrayOf(0x9FC7EA, 0xB0D2EE, 0xC2DDF2, 0xD4E8F6, 0xE6F2FA),
+            intArrayOf(0xF4FAFF, 0xD8EAF7, 0x9DBAD6), intArrayOf(0xA9C9E8, 0x86A9CC),
+            intArrayOf(0x7FA7CF, 0x55799E), intArrayOf(0xE6F0FA, 0xCFE0F1, 0xB5CCE6), AmbientParticles.Snow),
+        t("coral", "Coral Lagoon",
+            intArrayOf(0x7FD3E6, 0x93DBEA, 0xA8E3EE, 0xBEEAF2, 0xD7F3F7),
+            intArrayOf(0xFFF0C8, 0xF2DCA0, 0xD9B76E), intArrayOf(0xF2E3C0, 0xD9C29A),
+            intArrayOf(0x4FB07A, 0x2D7F55), intArrayOf(0xC6F0EE, 0xA6E2E0, 0x86D0CF), AmbientParticles.Bubbles),
+        t("starfall", "Starfall Sky",
+            intArrayOf(0x5E52A0, 0x7466B5, 0x8C7DC8, 0xA898DA, 0xC6B8EA),
+            intArrayOf(0xFFFFFF, 0xEDE6FF, 0xC3B1F0), intArrayOf(0xD7CBF6, 0xB9A6EC),
+            intArrayOf(0xFFFFFF, 0xDCD0F6), intArrayOf(0xB9A6EC, 0x9B86DA, 0x8170C4), AmbientParticles.Sparkles)
     )
 
     fun theme(world: String): WorldTheme = ordered.firstOrNull { it.key == world.lowercase() } ?: ordered[0]

@@ -19,6 +19,7 @@ enum TileKind: Character {
     case slopeDownLeft = "{"
     case platform = "_"
     case movingPlatform = "M"
+    case spring = "S"
 }
 
 struct TileMap {
@@ -102,7 +103,7 @@ struct TileMap {
 
     func isSolid(_ kind: TileKind) -> Bool {
         switch kind {
-        case .solid, .ground, .brick, .question, .pipe, .slopeUpRight, .slopeUpLeft, .slopeDownRight, .slopeDownLeft, .platform, .movingPlatform:
+        case .solid, .ground, .brick, .question, .pipe, .slopeUpRight, .slopeUpLeft, .slopeDownRight, .slopeDownLeft, .platform, .movingPlatform, .spring:
             return true
         default:
             return false
@@ -152,7 +153,8 @@ struct TileMap {
         for row in 0..<height {
             for col in 0..<width {
                 let kind = kind(at: col, row: row)
-                if isSolid(kind) && !isSlope(kind) && kind != .movingPlatform {
+                // Leaf-pads are one-way: Alina jumps up through them and lands on top (see platformRects).
+                if isSolid(kind) && !isSlope(kind) && kind != .movingPlatform && kind != .platform {
                     rects.append(tileRect(col: col, row: row))
                 }
             }

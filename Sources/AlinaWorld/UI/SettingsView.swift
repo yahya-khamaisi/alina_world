@@ -109,7 +109,7 @@ private struct ProgressSettings: View {
             Section {
                 LabeledContent("Missions unlocked", value: "\(min(GameProgress.missionCount, progress.unlockedMission)) of \(GameProgress.missionCount)")
                 LabeledContent("Stars earned", value: "\(progress.totalStars) of 81")
-                LabeledContent("Heart Crystals restored", value: "\(progress.crystalsRestored) of 9")
+                LabeledContent("Heart Crystals restored", value: "\(progress.crystalsRestored) of \(GameProgress.worldCount)")
                 LabeledContent("Petals collected", value: progress.totalPetals.formatted())
             }
             .id(refresh)

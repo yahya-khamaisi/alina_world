@@ -5,6 +5,9 @@ Layouts are deterministic per mission `layoutSeed`, so re-running the script is 
 Tile legend (see TileMap.swift):
   = ground   # stone   B mossbrick   ? bloom block   P log pillar   _ leaf-pad
   C petal    * heart shard   E crawler   X guardian   ^ thorns   F beacon
+  S spring shell (Coral Lagoon)
+
+Rows 6–7 sit above a single jump: petals and leaf-pads up there need the double jump.
 """
 import json
 import pathlib
@@ -108,6 +111,45 @@ def leaf_bridge(lv, x, rng):
     return x + w
 
 
+def sky_ledge(lv, x, rng):
+    """Leaf-pads at row 7 with petals above: only reachable with a double jump."""
+    w = rng.randint(3, 5)
+    for i in range(w):
+        lv.set(x + i, 7, "_")
+        lv.set(x + i, 6, "C")
+    return x + w
+
+
+def high_arc(lv, x, rng):
+    """Petal arc peaking at row 6, so the top petals need the second jump."""
+    n = rng.randint(4, 6)
+    for i in range(n):
+        lv.set(x + i, 6 if 0 < i < n - 1 else 8, "C")
+    return x + n
+
+
+def springs(lv, x, rng):
+    """Coral shells that bounce Alina up to a long high ledge of petals, wide enough to land at a sprint."""
+    lv.set(x, STAND, "S")
+    for i in range(1, 9):
+        lv.set(x + i, 6, "_")
+        if i % 2 == 0:
+            lv.set(x + i, 5, "C")
+    return x + 9
+
+
+def cloud_hops(lv, x, rng, hard):
+    """A wide gap crossed on small floating pads, Starfall's cloud hops."""
+    w = rng.randint(7, 8 + hard)
+    for i in range(w):
+        for y in GROUND_ROWS:
+            lv.set(x + i, y, ".")
+    for i, y in zip(range(1, w - 1, 3), [9, 8, 9, 7]):
+        lv.set(x + i, y, "_")
+        lv.set(x + i, y - 1, "C")
+    return x + w
+
+
 def crawlers(lv, x, rng, hard):
     count = 1 + (1 if hard and rng.random() < 0.5 else 0)
     for i in range(count):
@@ -163,20 +205,27 @@ def build(mission):
     hard = {"easy": 0, "normal": 1, "hard": 2}[mission["difficulty"]]
     objective = mission["objective"]
 
-    width = 96 + mission["id"] * 4
+    width = 96 + min(mission["id"], 27) * 4
     lv = Level(width)
     arena = 24 if objective == "defeatBoss" else 10
     end = width - arena
 
-    segments = ["petals", "blocks", "pit", "stairs", "logs", "bridge", "crawlers"]
+    segments = ["petals", "blocks", "pit", "stairs", "logs", "bridge", "crawlers", "sky", "high"]
+    weights = [3, 3, 1 + hard, 2, 2, 1 + hard, 2 + hard, 2, 1]
     if world_index >= 3:
         segments.append("thorns")
-    weights = [3, 3, 1 + hard, 2, 2, 1 + hard, 2 + hard] + ([1 + hard] if world_index >= 3 else [])
+        weights.append(1 + hard)
+    if world_index == 10:
+        segments.append("springs")
+        weights.append(3)
+    if world_index == 11:
+        segments.append("clouds")
+        weights.append(4)
 
     x, last_gap = 8, -20
     while x < end - 12:
         kind = rng.choices(segments, weights)[0]
-        if kind in ("pit", "bridge") and x - last_gap < 10:
+        if kind in ("pit", "bridge", "clouds") and x - last_gap < 10:
             kind = "petals"
         if kind == "petals":
             x = petal_arc(lv, x, rng)
@@ -196,6 +245,15 @@ def build(mission):
             x = crawlers(lv, x, rng, hard)
         elif kind == "thorns":
             x = thorns(lv, x, rng, hard)
+        elif kind == "sky":
+            x = sky_ledge(lv, x, rng)
+        elif kind == "high":
+            x = high_arc(lv, x, rng)
+        elif kind == "springs":
+            x = springs(lv, x, rng)
+        elif kind == "clouds":
+            x = cloud_hops(lv, x, rng, hard)
+            last_gap = x
         x += rng.randint(2, 4)
 
     if objective == "reachFlag":
@@ -211,8 +269,40 @@ def build(mission):
     mission["enemies"] = flyers(lv, mission, rng, end)
 
 
+ACT_FOUR = [
+    ("Frost", [("Snowfall Steps", "reachFlag", None), ("Frozen Shards", "collectN", 5), ("Frost Giant", "defeatBoss", None)]),
+    ("Coral", [("Tide Pools", "reachFlag", None), ("Pearl Lagoon", "collectN", 6), ("Crab King", "defeatBoss", None)]),
+    ("Starfall", [("Cloud Hop", "reachFlag", None), ("Wishing Stars", "collectN", 6), ("Star Keeper", "defeatBoss", None)]),
+]
+
+BRIEFINGS = {
+    "reachFlag": "Reach the beacon flag at the end of the path.",
+    "collectN": "Gather the Heart Crystals scattered across the level.",
+    "defeatBoss": "Stomp the guardian three times to reclaim the crystal.",
+}
+
+
+def add_act_four(data):
+    """Act IV · Beyond the Isles: three bonus worlds built around the double jump."""
+    have = {m["id"] for m in data["missions"]}
+    mission_id = 28
+    for world, missions in ACT_FOUR:
+        for title, objective, target in missions:
+            if mission_id not in have:
+                data["missions"].append({
+                    "id": mission_id, "world": world, "act": 4, "title": title,
+                    "briefing": f"{BRIEFINGS[objective]} World: {world}.",
+                    "victoryText": f"Alina secures another piece of the {world} light.",
+                    "difficulty": "normal", "objective": objective, "collectTarget": target,
+                    "timeLimit": None, "layoutSeed": 7919 * mission_id, "rows": [], "enemies": [],
+                })
+            mission_id += 1
+    data["missions"].sort(key=lambda m: m["id"])
+
+
 def main():
     data = json.loads(MISSIONS.read_text())
+    add_act_four(data)
     for mission in data["missions"]:
         build(mission)
     MISSIONS.write_text(json.dumps(data, indent=2) + "\n")

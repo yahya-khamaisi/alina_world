@@ -11,7 +11,8 @@ struct MissionCompleteView: View {
 
     private var mission: Mission? { MissionLoader.mission(id: result.missionID) }
     private var nextMission: Mission? { MissionLoader.mission(id: result.missionID + 1) }
-    private var isFinale: Bool { result.missionID == GameProgress.missionCount }
+    /// The Night Crown falls at 27; Act IV's last guardian ends the game at 36.
+    private var isFinale: Bool { result.missionID == 27 || result.missionID == GameProgress.missionCount }
     private var restoredCrystal: Bool { mission?.objective == .defeatBoss }
     private var theme: WorldTheme { mission.map { WorldThemes.theme(for: $0.world) } ?? WorldThemes.ordered[0] }
 
@@ -47,7 +48,7 @@ struct MissionCompleteView: View {
 
     private var resultsCard: some View {
         VStack(spacing: 22) {
-            Text(isFinale ? "The Isles Shine!" : "Clear!")
+            Text(isFinale ? (result.missionID == 27 ? "The Isles Shine!" : "Wish Granted!") : "Clear!")
                 .font(.rounded(44, .heavy))
                 .foregroundStyle(Palette.ink)
 
@@ -97,7 +98,7 @@ struct MissionCompleteView: View {
             HStack(spacing: Space.m) {
                 Button(action: onNext) {
                     HStack(spacing: 12) {
-                        if isFinale {
+                        if result.missionID == GameProgress.missionCount {
                             Image(systemName: "map.fill")
                         } else {
                             Text(nextMission?.code ?? "")

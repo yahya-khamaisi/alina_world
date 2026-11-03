@@ -18,7 +18,8 @@ class MissionResult(
 
 /** Saved progress, using the same keys as the Mac app. */
 object GameProgress {
-    const val MISSION_COUNT = 27
+    const val MISSION_COUNT = 36
+    const val WORLD_COUNT = 12
     private lateinit var prefs: SharedPreferences
 
     fun init(context: Context) {
@@ -50,7 +51,7 @@ object GameProgress {
     fun isUnlocked(id: Int): Boolean = id <= unlockedMission
 
     /** Heart Crystals restored: one per world whose guardian mission is complete. */
-    val crystalsRestored: Int get() = (0 until 9).count { isCompleted(it * 3 + 3) }
+    val crystalsRestored: Int get() = (0 until WORLD_COUNT).count { isCompleted(it * 3 + 3) }
 
     fun recordCompletion(result: MissionResult) {
         val id = result.missionID

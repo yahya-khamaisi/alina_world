@@ -4,23 +4,38 @@ import Foundation
 /// Tracks use space-separated tokens: a note name (`C5`, `F#4`, `Bb2`) starts a note,
 /// `.` holds the previous one, `-` releases it. Drums use `k` kick, `s` snare, `h` hat, `-` rest.
 struct Song {
-    let name: String
-    let bpm: Double
+    private(set) var name: String
+    private(set) var bpm: Double
     let loops: Bool
     let lead: [Int]
     let harmony: [Int]
     let bass: [Int]
     let drums: [Character]
+    /// Sound of the melody and of the harmony line; the bass is always a soft triangle.
+    var leadVoice: Instrument = .chip
+    var harmonyVoice: Instrument = .chip
+    /// 0…1 drum volume, so gentle worlds keep the beat quiet.
+    var drumLevel: Float = 1
+    /// 0 plays straight eighths; 0.1–0.15 gives a light, bouncy swing.
+    var swing: Double = 0
 
     var length: Int { max(lead.count, harmony.count, bass.count, drums.count) }
 
     static let hold = 0
     static let rest = -1
 
-    init(name: String, bpm: Double, loops: Bool = true, lead: [String], harmony: [String] = [], bass: [String], drums: [String] = []) {
+    init(
+        name: String, bpm: Double, loops: Bool = true, leadVoice: Instrument = .chip, harmonyVoice: Instrument = .chip,
+        drumLevel: Float = 1, swing: Double = 0,
+        lead: [String], harmony: [String] = [], bass: [String], drums: [String] = []
+    ) {
         self.name = name
         self.bpm = bpm
         self.loops = loops
+        self.leadVoice = leadVoice
+        self.harmonyVoice = harmonyVoice
+        self.drumLevel = drumLevel
+        self.swing = swing
         self.lead = Self.parse(lead)
         self.harmony = Self.parse(harmony)
         self.bass = Self.parse(bass)
@@ -28,17 +43,11 @@ struct Song {
     }
 
     func withTempo(_ factor: Double) -> Song {
-        Song(raw: self, bpm: bpm * factor)
-    }
-
-    private init(raw: Song, bpm: Double) {
-        name = raw.name
-        self.bpm = bpm
-        loops = raw.loops
-        lead = raw.lead
-        harmony = raw.harmony
-        bass = raw.bass
-        drums = raw.drums
+        var copy = self
+        copy.name += " (guardian)"
+        copy.bpm *= factor
+        copy.drumLevel = min(1, drumLevel * 1.3)
+        return copy
     }
 
     private static func parse(_ bars: [String]) -> [Int] {
@@ -63,86 +72,82 @@ struct Song {
     }
 }
 
-/// Original compositions for Alina World. Each world act gets its own mood:
-/// bright C major on the menus, a skipping F major for the dawn worlds,
-/// a wistful A minor for dusk, and a driving D minor for the Night Crown.
+/// Synth voices. Each is a waveform with its own envelope, so a song can sound like a flute or a music box.
+enum Instrument {
+    case chip, softSquare, pluck, flute, ocarina, whistle, bell, musicBox, celesta, steel, organ, pad
+
+    enum Wave { case pulse50, pulse25, triangle, sine, bell, steel }
+
+    var wave: Wave {
+        switch self {
+        case .chip, .pluck: return .pulse25
+        case .softSquare, .organ: return .pulse50
+        case .flute, .pad: return .triangle
+        case .ocarina, .whistle: return .sine
+        case .bell, .musicBox, .celesta: return .bell
+        case .steel: return .steel
+        }
+    }
+
+    /// Level the note settles to after its attack; 0 lets it ring out like a struck bell.
+    var sustain: Float {
+        switch self {
+        case .chip: return 0.55
+        case .softSquare: return 0.45
+        case .pluck, .bell, .musicBox, .celesta, .steel: return 0
+        case .flute, .ocarina: return 0.7
+        case .whistle, .organ, .pad: return 0.85
+        }
+    }
+
+    /// Seconds for the attack to fall to the sustain level.
+    var decay: Double {
+        switch self {
+        case .pluck: return 0.1
+        case .celesta: return 0.22
+        case .steel: return 0.28
+        case .bell: return 0.38
+        case .musicBox: return 0.55
+        case .pad: return 0.5
+        default: return 0.12
+        }
+    }
+
+    var level: Float {
+        switch self {
+        case .chip: return 0.15
+        case .softSquare, .organ: return 0.07
+        case .pluck: return 0.1
+        case .flute: return 0.2
+        case .ocarina, .whistle: return 0.2
+        case .bell, .musicBox, .steel: return 0.24
+        case .celesta: return 0.18
+        case .pad: return 0.08
+        }
+    }
+
+    /// Pitch wobble depth for breathy voices.
+    var vibrato: Double {
+        switch self {
+        case .flute: return 0.004
+        case .ocarina: return 0.003
+        case .whistle: return 0.006
+        default: return 0
+        }
+    }
+}
+
+/// Original compositions for Alina World: a theme for the isles and one song per world
+/// (see Scripts/compose-songs.py and the generated Soundtrack.swift).
 enum Songs {
-    static let title = Song(
-        name: "Lumen Isles",
-        bpm: 112,
-        lead: [
-            "E5 . G5 . C6 . G5 .", "A5 . . . E5 . C5 .", "F5 . A5 . C6 . A5 .", "G5 . . . D5 . B4 .",
-            "E5 . G5 . C6 . D6 .", "E6 . D6 . C6 . A5 .", "A5 . C6 . B5 . G5 .", "C6 . . . - . . ."
-        ],
-        harmony: [
-            "C4 E4 G4 E4 C4 E4 G4 E4", "A3 C4 E4 C4 A3 C4 E4 C4", "F3 A3 C4 A3 F3 A3 C4 A3", "G3 B3 D4 B3 G3 B3 D4 B3",
-            "C4 E4 G4 E4 C4 E4 G4 E4", "A3 C4 E4 C4 A3 C4 E4 C4", "F3 A3 C4 A3 G3 B3 D4 B3", "C4 E4 G4 E4 C4 - . ."
-        ],
-        bass: [
-            "C3 . G3 . C3 . G3 .", "A2 . E3 . A2 . E3 .", "F2 . C3 . F2 . C3 .", "G2 . D3 . G2 . D3 .",
-            "C3 . G3 . C3 . G3 .", "A2 . E3 . A2 . E3 .", "F2 . C3 . G2 . D3 .", "C3 . G3 . C3 - . ."
-        ],
-        drums: Array(repeating: "k h s h k h s h", count: 7) + ["k h s h k - - -"]
-    )
-
-    static let dawnRun = Song(
-        name: "Dawn Run",
-        bpm: 150,
-        lead: [
-            "A4 . C5 . F5 . A5 .", "G5 . E5 . C5 . E5 .", "F5 . A5 . D6 . A5 .", "Bb5 . A5 . G5 . F5 .",
-            "A5 . A5 C6 . A5 F5 .", "G5 . G5 Bb5 . G5 E5 .", "D5 F5 Bb5 . C6 . E5 G5", "F5 . . . - . . ."
-        ],
-        harmony: [
-            "- A4 - A4 - A4 - A4", "- G4 - G4 - G4 - G4", "- F4 - F4 - F4 - F4", "- D5 - D5 - D5 - D5",
-            "- A4 - A4 - A4 - A4", "- G4 - G4 - G4 - G4", "- D5 - D5 - E5 - E5", "- A4 - A4 - . . ."
-        ],
-        bass: [
-            "F2 F3 F2 F3 F2 F3 F2 F3", "C3 C4 C3 C4 C3 C4 C3 C4", "D3 D4 D3 D4 D3 D4 D3 D4", "Bb2 Bb3 Bb2 Bb3 Bb2 Bb3 Bb2 Bb3",
-            "F2 F3 F2 F3 F2 F3 F2 F3", "C3 C4 C3 C4 C3 C4 C3 C4", "Bb2 Bb3 Bb2 Bb3 C3 C4 C3 C4", "F2 F3 F2 F3 F2 . - ."
-        ],
-        drums: Array(repeating: "k h s h k k s h", count: 7) + ["k h s h k s s s"]
-    )
-
-    static let duskTrail = Song(
-        name: "Dusk Trail",
-        bpm: 128,
-        lead: [
-            "E5 . A5 . B5 . C6 .", "A5 . . . F5 . A5 .", "G5 . E5 . G5 . C6 .", "B5 . . . G5 . D5 .",
-            "C6 . B5 . A5 . E5 .", "F5 . A5 . C6 . A5 .", "D6 . C6 . B5 . G#5 .", "A5 . . . - . . ."
-        ],
-        harmony: [
-            "A4 C5 E5 C5 A4 C5 E5 C5", "F4 A4 C5 A4 F4 A4 C5 A4", "E4 G4 C5 G4 E4 G4 C5 G4", "D4 G4 B4 G4 D4 G4 B4 G4",
-            "A4 C5 E5 C5 A4 C5 E5 C5", "F4 A4 C5 A4 F4 A4 C5 A4", "D4 F4 A4 F4 E4 G#4 B4 G#4", "A4 C5 E5 C5 A4 - . ."
-        ],
-        bass: [
-            "A2 . A2 E3 A2 . G2 .", "F2 . F2 C3 F2 . E2 .", "C3 . C3 G3 C3 . B2 .", "G2 . G2 D3 G2 . F#2 .",
-            "A2 . A2 E3 A2 . G2 .", "F2 . F2 C3 F2 . E2 .", "D3 . D3 A2 E3 . E2 .", "A2 . E3 . A2 - . ."
-        ],
-        drums: Array(repeating: "k - h - s - h h", count: 7) + ["k - h - s s s s"]
-    )
-
-    static let nightCrown = Song(
-        name: "Night Crown",
-        bpm: 156,
-        lead: [
-            "D5 . F5 . A5 . D6 .", "D6 . C6 . Bb5 . F5 .", "E5 . G5 . C6 . E6 .", "E6 . . . C#6 . A5 .",
-            "F6 . E6 . D6 . A5 .", "Bb5 . A5 . F5 . D5 .", "G5 . Bb5 . A5 . C#6 .", "D6 . . . - . . ."
-        ],
-        harmony: [
-            "- F4 - F4 - F4 - F4", "- D4 - D4 - D4 - D4", "- E4 - E4 - E4 - E4", "- C#5 - C#5 - C#5 - C#5",
-            "- F4 - F4 - F4 - F4", "- D4 - D4 - D4 - D4", "- Bb4 - Bb4 - C#5 - C#5", "- F4 - F4 - . . ."
-        ],
-        bass: [
-            "D2 D3 D2 D3 D2 D3 D2 D3", "Bb1 Bb2 Bb1 Bb2 Bb1 Bb2 Bb1 Bb2", "C2 C3 C2 C3 C2 C3 C2 C3", "A1 A2 A1 A2 A1 A2 A1 A2",
-            "D2 D3 D2 D3 D2 D3 D2 D3", "Bb1 Bb2 Bb1 Bb2 Bb1 Bb2 Bb1 Bb2", "G1 G2 G1 G2 A1 A2 A1 A2", "D2 D3 D2 D3 D2 . - ."
-        ],
-        drums: Array(repeating: "k h s h k h s s", count: 7) + ["k s k s k s s s"]
-    )
+    static var title: Song { byKey["title"]! }
 
     static let victory = Song(
         name: "Crystal Restored",
         bpm: 150,
         loops: false,
+        leadVoice: .bell,
+        harmonyVoice: .pluck,
         lead: ["C5 E5 G5 C6 . G5 C6 . . . . -"],
         harmony: ["- C5 - E5 . - E5 . . . . -"],
         bass: ["C3 . . . . G2 C3 . . . . -"],
@@ -153,13 +158,14 @@ enum Songs {
         name: "Try Again",
         bpm: 96,
         loops: false,
+        leadVoice: .flute,
         lead: ["G4 . F#4 . F4 . E4 . . . -"],
         bass: ["C3 . B2 . Bb2 . A2 . . . -"]
     )
 
-    /// Level music by act (worlds 1–3, 4–6, 7–9); guardian missions play it faster.
-    static func level(worldIndex: Int, guardian: Bool) -> Song {
-        let base = worldIndex < 3 ? dawnRun : (worldIndex < 6 ? duskTrail : nightCrown)
-        return guardian ? base.withTempo(1.1) : base
+    /// Each world's own song; guardian missions play it a little faster with more drums.
+    static func world(_ key: String, guardian: Bool) -> Song {
+        let base = byKey[key] ?? title
+        return guardian ? base.withTempo(1.08) : base
     }
 }

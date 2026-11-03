@@ -79,6 +79,7 @@ class GameWorld(val mission: Mission, private val assistMode: Boolean, val ambie
         player.x = level.playerStartX
         player.y = level.playerStartY
         player.primeJump(Input.jumpHeld)
+        player.slippery = level.theme.key == "frost"
         Input.autoRun = app.jannat.alinaworld.data.Settings.autoRun
         Input.steering = false
         placeCamera()
@@ -128,7 +129,8 @@ class GameWorld(val mission: Mission, private val assistMode: Boolean, val ambie
         if (!Input.steering) Input.steering = true
         Input.tick(dt)
 
-        if (Input.consumePause() || Input.consumeEscape()) {
+        // Consume both, so one key never pauses and then resumes from the pause menu.
+        if (Input.consumePause() or Input.consumeEscape()) {
             pause()
             onPauseRequested?.invoke()
             return
@@ -139,6 +141,7 @@ class GameWorld(val mission: Mission, private val assistMode: Boolean, val ambie
 
         updateMovingPlatforms(dt)
         player.update(dt, mission.difficulty)
+        if (player.didAirJump) burstParticles(particles, player.x, player.y - 14, intArrayOf(0xFFFFFF, 0xFF8DBE), 10, 120f)
         moveAndCollide(dt)
 
         for (enemy in level.enemies) if (enemy.alive) {
@@ -218,6 +221,10 @@ class GameWorld(val mission: Mission, private val assistMode: Boolean, val ambie
             }
             AmbientParticles.Embers -> { rate = 3f; color = 0xFFB347; w = 4f; h = 4f; angle = (Math.PI / 2).toFloat(); speed = 30f; spreadY = 500f }
             AmbientParticles.Dust, AmbientParticles.Mist -> { rate = 2f; color = 0xFFFFFF; alpha = 0.5f; w = 4f; h = 4f; angle = 0f; speed = 40f; spreadY = 500f }
+            AmbientParticles.Snow -> { rate = 6f; color = 0xFFFFFF; w = 5f; h = 5f; angle = (-Math.PI / 2 - 0.2).toFloat(); speed = 40f }
+            AmbientParticles.Bubbles -> {
+                rate = 2.5f; color = 0xE8FBFF; alpha = 0.7f; angle = (Math.PI / 2).toFloat(); speed = 24f; alphaSpeed = -0.1f; spreadY = 500f
+            }
             AmbientParticles.Sparkles, AmbientParticles.Motes -> {
                 rate = 3f; color = if (kind == AmbientParticles.Sparkles) 0xFFFFFF else 0xFFE98A; w = 4f; h = 4f
                 angle = (Math.PI / 2).toFloat(); speed = 14f; alphaSpeed = -0.15f; spreadY = 500f
@@ -254,6 +261,7 @@ class GameWorld(val mission: Mission, private val assistMode: Boolean, val ambie
 
     private fun moveAndCollide(dt: Float) {
         val rect = player.box
+        val previousFeet = rect.minY
         rect.x += player.vx * dt
         rect.x = rect.x.coerceIn(0f, mapWidth - rect.w)
         resolveAxis(rect, horizontal = true)
@@ -262,7 +270,8 @@ class GameWorld(val mission: Mission, private val assistMode: Boolean, val ambie
         player.onGround = false
         resolveAxis(rect, horizontal = false)
         checkSlopes(rect)
-        checkPlatforms(rect)
+        checkPlatforms(rect, previousFeet)
+        checkSprings(rect)
 
         player.x = rect.midX
         player.y = rect.midY
@@ -311,16 +320,18 @@ class GameWorld(val mission: Mission, private val assistMode: Boolean, val ambie
         }
     }
 
-    private fun checkPlatforms(rect: Box) {
+    /** One-way leaf-pads: Alina lands when her feet cross the top this frame, however fast she falls. */
+    private fun checkPlatforms(rect: Box, previousFeet: Float) {
         if (player.vy > 0) return
         val t = GameConstants.TILE
         val feet = rect.minY
-        forTilesNear(rect) { col, row ->
+        val swept = Box(rect.x, feet, rect.w, maxOf(rect.h, previousFeet - feet + rect.h))
+        forTilesNear(swept) { col, row ->
             val kind = map.kind(col, row)
             // The Mac game also treats a moving platform's starting tile as a ledge; kept so levels play the same.
             if (kind != Tile.Platform && kind != Tile.Moving) return@forTilesNear
             val px = map.tileX(col); val top = map.tileY(row) + t
-            if (rect.maxX > px + 2 && rect.minX < px + t - 2 && feet <= top && feet >= top - 10) {
+            if (rect.maxX > px + 2 && rect.minX < px + t - 2 && feet <= top && previousFeet >= top - 2) {
                 rect.y = top; player.onGround = true; player.vy = 0f
             }
         }
@@ -328,6 +339,22 @@ class GameWorld(val mission: Mission, private val assistMode: Boolean, val ambie
             val top = p.y + 10
             if (rect.maxX > p.x - 64 && rect.minX < p.x + 64 && feet <= top && feet >= top - 12) {
                 rect.y = top; player.onGround = true; player.vy = 0f
+            }
+        }
+    }
+
+    /** Coral shells launch Alina when she runs into one or lands on it, so auto-run can ride them. */
+    private fun checkSprings(rect: Box) {
+        if (player.vy > 0) return
+        val t = GameConstants.TILE
+        val touch = Box(rect.x - 3, rect.y - 2, rect.w + 6, rect.h + 4)
+        forTilesNear(touch) { col, row ->
+            if (map.kind(col, row) != Tile.Spring) return@forTilesNear
+            val px = map.tileX(col); val py = map.tileY(row)
+            if (touch.intersects(px, py, t, t) && rect.minY >= py - 2) {
+                player.applyBounce(980f)
+                Chiptune.play(SoundEffect.Spring)
+                return
             }
         }
     }

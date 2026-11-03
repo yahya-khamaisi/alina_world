@@ -1,7 +1,7 @@
 # Alina World for Android TV
 
 The Mac game ported to Kotlin for Google TV / Android TV, played with the TV remote. It uses the same
-27 missions (read from `../Sources/AlinaWorld/Resources/Missions.json` at build time), pixel sprites,
+36 missions (read from `../Sources/AlinaWorld/Resources/Missions.json` at build time), pixel sprites,
 chiptune soundtrack and icon-first menus. Package `app.jannat.alinaworld`.
 
 ## Build and install
@@ -42,7 +42,7 @@ held while pressing OK, so Alina auto-runs.
 | ◀ ▶ (tap) | Start running that way; the other arrow turns her around | Move focus / change a setting |
 | ◀ ▶ (hold) | Sprint; she keeps sprinting after you let go | |
 | ▼ | Stop | Move focus |
-| OK or ▲ | Jump at full height, even on a quick tap; hold while falling to glide | Select |
+| OK or ▲ | Jump at full height, even on a quick tap; press again in the air to double jump; hold while falling to glide | Select |
 | Back | Pause | Back |
 
 Auto-run can be turned off in Settings, which brings back hold-to-move.

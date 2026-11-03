@@ -8,20 +8,6 @@ struct MissionMapView: View {
     @ObservedObject private var nav = MenuNavigationState.shared
     private let progress = GameProgress.shared
 
-    /// Node centers and islands in an 832 × 600 design space, scaled to the map card.
-    private static let nodes: [CGPoint] = [
-        CGPoint(x: 102, y: 500), CGPoint(x: 252, y: 420), CGPoint(x: 422, y: 480),
-        CGPoint(x: 572, y: 380), CGPoint(x: 732, y: 280), CGPoint(x: 592, y: 170),
-        CGPoint(x: 412, y: 200), CGPoint(x: 252, y: 100), CGPoint(x: 452, y: 40)
-    ]
-    private static let islands: [(CGRect, UInt32)] = [
-        (CGRect(x: 10, y: 400, width: 340, height: 200), 0x7FD06B),
-        (CGRect(x: 330, y: 380, width: 300, height: 210), 0x5DBB7A),
-        (CGRect(x: 500, y: 250, width: 290, height: 220), 0xC9A27E),
-        (CGRect(x: 190, y: 90, width: 470, height: 200), 0x9C86C9),
-        (CGRect(x: 360, y: -20, width: 200, height: 120), 0x6E64A3)
-    ]
-
     private var selectedWorld: Int { nav.missionMapIndex / 3 }
     private var selectedMission: Mission? { missions.first { $0.id == nav.missionMapIndex + 1 } }
     private var act: Int { selectedWorld / 3 }
@@ -59,11 +45,12 @@ struct MissionMapView: View {
             .accessibilityLabel("Back to menu")
 
             HStack(spacing: Space.xs) {
-                ForEach(0..<3, id: \.self) { index in
+                ForEach(0..<4, id: \.self) { index in
                     let acts: [(icon: String, label: String, tint: Color)] = [
                         ("sunrise.fill", "Act I, dawn", Palette.goldText),
                         ("sunset.fill", "Act II, dusk", Color(hex: 0xC9601F)),
-                        ("moon.stars.fill", "Act III, night", Palette.violet)
+                        ("moon.stars.fill", "Act III, night", Palette.violet),
+                        ("sparkles", "Act IV, beyond the isles", Palette.sky)
                     ]
                     let unlocked = progress.isUnlocked(missionID: index * 9 + 1)
                     Button {
@@ -89,107 +76,106 @@ struct MissionMapView: View {
 
             HStack(spacing: Space.s) {
                 PixelImage(sprite: .crystal, scale: 2)
-                Text("\(progress.crystalsRestored)/9")
+                Text("\(progress.crystalsRestored)/\(GameProgress.worldCount)")
             }
             .pill(height: 52)
-            .accessibilityLabel("\(progress.crystalsRestored) of 9 Heart Crystals")
+            .accessibilityLabel("\(progress.crystalsRestored) of \(GameProgress.worldCount) Heart Crystals")
             HStack(spacing: Space.s) {
                 Image(systemName: "star.fill").foregroundStyle(Palette.gold)
                 Text("\(progress.totalStars)")
             }
             .pill(height: 52)
-            .accessibilityLabel("\(progress.totalStars) of 81 stars")
+            .accessibilityLabel("\(progress.totalStars) of \(GameProgress.missionCount * 3) stars")
         }
         .font(.rounded(17, .bold))
     }
 
     // MARK: Map
 
+    /// The illustrated isles; each island's landmark shows what the world holds.
     private var map: some View {
-        GeometryReader { proxy in
-            let sx = proxy.size.width / 832
-            let sy = proxy.size.height / 600
+        let cleared = (0..<GameProgress.worldCount).filter { progress.isCompleted(missionID: $0 * 3 + 3) }.count
+        let unlocked = (0..<GameProgress.worldCount).filter { progress.isUnlocked(missionID: $0 * 3 + 1) }.count
+        return GeometryReader { proxy in
+            let s = min(proxy.size.width / MapArt.size.width, proxy.size.height / MapArt.size.height)
             ZStack(alignment: .topLeading) {
-                Canvas { context, size in
-                    let cell: CGFloat = 32
-                    for row in 0...Int(size.height / cell) {
-                        for col in 0...Int(size.width / cell) where (row + col) % 2 == 0 {
-                            context.fill(Path(CGRect(x: CGFloat(col) * cell, y: CGFloat(row) * cell, width: cell, height: cell)),
-                                         with: .color(Color(hex: 0x84CBEE)))
-                        }
-                    }
-                }
-                .background(Color(hex: 0x8ED2F2))
+                Image(decorative: MapArt.image(cleared: cleared, unlocked: unlocked, current: selectedWorld), scale: 2)
+                    .resizable()
+                    .interpolation(.none)
+                    .frame(width: MapArt.size.width * s, height: MapArt.size.height * s)
 
-                ForEach(0..<Self.islands.count, id: \.self) { i in
-                    let (rect, color) = Self.islands[i]
-                    RoundedRectangle(cornerRadius: min(rect.width * sx, rect.height * sy) * 0.44, style: .continuous)
-                        .fill(Color(hex: color))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: min(rect.width * sx, rect.height * sy) * 0.44, style: .continuous)
-                                .strokeBorder(Color(hex: 0xF6E3B4), lineWidth: 10)
-                        )
-                        .frame(width: rect.width * sx, height: rect.height * sy)
-                        .offset(x: rect.minX * sx, y: rect.minY * sy)
+                ForEach(0..<GameProgress.worldCount, id: \.self) { world in
+                    let island = MapArt.islands[world]
+                    worldPin(world)
+                        .position(x: island.center.x * s, y: (island.center.y - island.radius.height - 26) * s)
                 }
 
-                Path { path in
-                    path.addLines(Self.nodes.map { CGPoint(x: $0.x * sx, y: $0.y * sy) })
-                }
-                .stroke(.white, style: StrokeStyle(lineWidth: 6, lineCap: .round, dash: [2, 14]))
+                let current = MapArt.islands[selectedWorld]
+                Text(WorldThemes.ordered[selectedWorld].name)
+                    .font(.rounded(17, .bold))
+                    .foregroundStyle(Palette.ink)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white).shadow(color: Palette.edge, radius: 0, y: 4))
+                    .fixedSize()
+                    .position(x: current.center.x * s, y: (current.center.y + current.radius.height + 34) * s)
+                    .animation(.spring(duration: 0.35), value: selectedWorld)
+                    .allowsHitTesting(false)
 
-                ForEach(0..<9, id: \.self) { world in
-                    worldNode(world)
-                        .position(x: Self.nodes[world].x * sx, y: Self.nodes[world].y * sy + 24)
-                }
-
-                let current = Self.nodes[selectedWorld]
                 PixelImage(sprite: .alinaIdle, scale: 3)
-                    .position(x: current.x * sx - 48, y: current.y * sy - 6)
+                    .position(x: (current.center.x - current.radius.width * 0.62) * s, y: (current.center.y - 26) * s)
                     .animation(.spring(duration: 0.35), value: selectedWorld)
                     .allowsHitTesting(false)
             }
+            .frame(width: MapArt.size.width * s, height: MapArt.size.height * s)
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(.white, lineWidth: 6))
+            .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Palette.edge).offset(y: 10))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(.white, lineWidth: 6))
-        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Palette.edge).offset(y: 10))
     }
 
-    private func worldNode(_ world: Int) -> some View {
+    /// World number with its stars, or a lock; tap to jump there.
+    private func worldPin(_ world: Int) -> some View {
         let theme = WorldThemes.ordered[world]
         let firstID = world * 3 + 1
         let unlocked = progress.isUnlocked(missionID: firstID)
         let stars = (firstID...firstID + 2).reduce(0) { $0 + progress.starCount(for: $1) }
         let selected = world == selectedWorld
+        let cleared = progress.isCompleted(missionID: firstID + 2)
 
         return Button {
             if unlocked { nav.missionMapIndex = firstPlayableIndex(inWorld: world) }
         } label: {
-            VStack(spacing: 6) {
-                ZStack {
-                    Circle().fill(unlocked ? Color(hex: theme.grass.1) : Color(hex: 0xB9AFA3))
-                    if unlocked {
-                        Text("\(world + 1)").font(.rounded(22, .heavy)).foregroundStyle(.white)
-                    } else {
-                        Image(systemName: "lock.fill").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+            Group {
+                if unlocked {
+                    HStack(spacing: 6) {
+                        Text("\(world + 1)").font(.rounded(17, .heavy))
+                        HStack(spacing: 1) {
+                            ForEach(0..<3, id: \.self) { i in
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(i < (stars + 2) / 3 ? Palette.gold : .white.opacity(0.45))
+                            }
+                        }
                     }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .frame(height: 32)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(selected ? Palette.pink : (cleared ? Palette.mint : Palette.sky))
+                            .shadow(color: selected ? Palette.pinkDeep : Palette.ink.opacity(0.25), radius: 0, y: 4)
+                    )
+                } else {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Palette.muted)
+                        .frame(width: 32, height: 32)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(0.9)))
                 }
-                .frame(width: 60, height: 60)
-                .overlay(Circle().strokeBorder(.white, lineWidth: 5))
-                .background(Circle().fill(selected ? Palette.pinkDeep : Palette.ink.opacity(0.2)).offset(y: 5))
-                .overlay(Circle().inset(by: -7).strokeBorder(selected ? Palette.pink : .clear, lineWidth: 4))
-
-                HStack(spacing: 3) {
-                    Image(systemName: "star.fill").foregroundStyle(Palette.gold)
-                    Text("\(stars)")
-                }
-                .font(.rounded(12, .heavy))
-                .foregroundStyle(Palette.goldText)
-                .padding(.horizontal, Space.s)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(.white).shadow(color: Palette.edge, radius: 0, y: 2))
-                .opacity(unlocked ? 1 : 0)
             }
+            .scaleEffect(selected ? 1.12 : 1)
         }
         .buttonStyle(.plain)
         .help(theme.name)
@@ -312,7 +298,7 @@ struct MissionMapView: View {
     }
 
     private func moveWorld(_ delta: Int) {
-        let world = max(0, min(8, selectedWorld + delta))
+        let world = max(0, min(GameProgress.worldCount - 1, selectedWorld + delta))
         guard progress.isUnlocked(missionID: world * 3 + 1) else { return }
         nav.missionMapIndex = firstPlayableIndex(inWorld: world)
     }

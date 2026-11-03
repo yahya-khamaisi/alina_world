@@ -33,6 +33,12 @@ class Player {
     var bloom = false; private set
     /** Glow Ribbon: hold jump while falling to glide. */
     var hasRibbon = false; private set
+    /** One extra jump in the air; refilled on landing and by stomping an enemy. */
+    var airJumps = 1; private set
+    /** True for the frame the air jump fires, so the world can leave a sparkle puff. */
+    var didAirJump = false; private set
+    /** Frostpeak ice: less grip, so Alina slides before she stops. */
+    var slippery = false
 
     var state = PlayerState.Idle; private set
     var stateTimer = 0f; private set
@@ -84,8 +90,8 @@ class Player {
         val walkSpeed = when (difficulty) { Difficulty.Hard -> 260f; Difficulty.Normal -> 230f; Difficulty.Easy -> 200f }
         val runSpeed = when (difficulty) { Difficulty.Hard -> 360f; Difficulty.Normal -> 320f; Difficulty.Easy -> 280f }
         val maxSpeed = if (input.sprint) runSpeed else walkSpeed
-        val accel = if (onGround) 1800f else 1200f
-        val friction = if (onGround) 1400f else 400f
+        val accel = if (onGround) (if (slippery) 900f else 1800f) else 1200f
+        val friction = if (onGround) (if (slippery) 260f else 1400f) else 400f
         val jumpVelocity = if (input.sprint || abs(vx) > walkSpeed) 720f else 640f
         val gravity = GameConstants.GRAVITY
 
@@ -113,7 +119,9 @@ class Player {
         lastJumpHeld = input.jumpHeld
         if (jumpPressed) jumpBufferTimer = 0.15f else if (jumpBufferTimer > 0) jumpBufferTimer -= dt
 
-        if (onGround) coyoteTimer = 0.15f else if (coyoteTimer > 0) coyoteTimer -= dt
+        if (onGround) { coyoteTimer = 0.15f; airJumps = 1 } else if (coyoteTimer > 0) coyoteTimer -= dt
+
+        didAirJump = false
 
         if (jumpBufferTimer > 0 && coyoteTimer > 0) {
             vy = jumpVelocity
@@ -123,6 +131,16 @@ class Player {
             jumpBoost = 0.2f
             setState(PlayerState.Jump)
             Chiptune.play(SoundEffect.Jump)
+        } else if (jumpPressed && !onGround && airJumps > 0) {
+            // Double jump: a fresh press in the air resets the fall into a slightly smaller hop.
+            airJumps--
+            vy = jumpVelocity * 0.9f
+            jumpBufferTimer = 0f
+            jumpBoost = 0.2f
+            didAirJump = true
+            state = PlayerState.Fall
+            setState(PlayerState.Jump)
+            Chiptune.play(SoundEffect.DoubleJump)
         }
         if (jumpBoost > 0) jumpBoost -= dt
 
@@ -204,9 +222,12 @@ class Player {
         }
     }
 
-    fun applyBounce() {
-        vy = GameConstants.STOMP_BOUNCE
+    fun applyBounce(velocity: Float = GameConstants.STOMP_BOUNCE) {
+        vy = velocity
         onGround = false
+        airJumps = 1
+        // Spring launches rise to full height even with jump released.
+        if (velocity > GameConstants.STOMP_BOUNCE) jumpBoost = 0.5f
         stompGraceTimer = 0.35f
         setState(PlayerState.Bounce)
     }

@@ -33,6 +33,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.draw.scale
+import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -53,16 +60,6 @@ import app.jannat.alinaworld.game.Input
 import app.jannat.alinaworld.game.WorldThemes
 import app.jannat.alinaworld.pixel.PixelSprite
 
-/** Node centers and islands in an 832 × 600 design space, scaled to the map card. */
-private val nodes = listOf(102f to 500f, 252f to 420f, 422f to 480f, 572f to 380f, 732f to 280f, 592f to 170f, 412f to 200f, 252f to 100f, 452f to 40f)
-private val islands = listOf(
-    floatArrayOf(10f, 400f, 340f, 200f) to 0x7FD06B,
-    floatArrayOf(330f, 380f, 300f, 210f) to 0x5DBB7A,
-    floatArrayOf(500f, 250f, 290f, 220f) to 0xC9A27E,
-    floatArrayOf(190f, 90f, 470f, 200f) to 0x9C86C9,
-    floatArrayOf(360f, -20f, 200f, 120f) to 0x6E64A3
-)
-
 private fun firstPlayable(world: Int): Int {
     val ids = (world * 3 + 1)..(world * 3 + 3)
     val target = ids.firstOrNull { GameProgress.isUnlocked(it) && !GameProgress.isCompleted(it) }
@@ -78,7 +75,7 @@ fun MissionMapScreen() {
     val selected = Missions.byId(index + 1)
 
     fun moveWorld(delta: Int) {
-        val w = (world + delta).coerceIn(0, 8)
+        val w = (world + delta).coerceIn(0, GameProgress.WORLD_COUNT - 1)
         if (GameProgress.isUnlocked(w * 3 + 1) && w != world) { Router.mapIndex = firstPlayable(w); Router.select() }
     }
 
@@ -108,7 +105,10 @@ fun MissionMapScreen() {
                     }.padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    val acts = listOf(Icons.Filled.WbTwilight to Palette.goldText, Icons.Filled.WbSunny to Color(0xFFC9601F), Icons.Filled.NightsStay to Palette.violet)
+                    val acts = listOf(
+                        Icons.Filled.WbTwilight to Palette.goldText, Icons.Filled.WbSunny to Color(0xFFC9601F),
+                        Icons.Filled.NightsStay to Palette.violet, Icons.Filled.AutoAwesome to Color(0xFF4AA8E8)
+                    )
                     acts.forEachIndexed { i, (icon, tint) ->
                         val unlocked = GameProgress.isUnlocked(i * 9 + 1)
                         Box(
@@ -122,7 +122,7 @@ fun MissionMapScreen() {
                 Spacer(Modifier.weight(1f))
                 Pill {
                     Sprite(PixelSprite.Crystal, 2f)
-                    BasicText("${GameProgress.crystalsRestored}/9", style = rounded(17.sp, FontWeight.ExtraBold))
+                    BasicText("${GameProgress.crystalsRestored}/${GameProgress.WORLD_COUNT}", style = rounded(17.sp, FontWeight.ExtraBold))
                 }
                 Pill {
                     Glyph(Icons.Filled.Star, Palette.gold, 20.dp)
@@ -137,69 +137,73 @@ fun MissionMapScreen() {
     }
 }
 
+/** The illustrated isles; each island's landmark shows what the world holds. */
 @Composable
 private fun IslandMap(modifier: Modifier, selectedWorld: Int) {
+    val cleared = (0 until GameProgress.WORLD_COUNT).count { GameProgress.isCompleted(it * 3 + 3) }
+    val unlocked = (0 until GameProgress.WORLD_COUNT).count { GameProgress.isUnlocked(it * 3 + 1) }
+    val image = remember(cleared, unlocked, selectedWorld) { MapArt.bitmap(cleared, unlocked, selectedWorld).asImageBitmap() }
     val shape = RoundedCornerShape(28.dp)
-    BoxWithConstraints(
-        modifier
-            .drawBehind { drawRoundRect(Palette.edge, Offset(0f, 10.dp.toPx()), size, CornerRadius(28.dp.toPx())) }
-            .clip(shape)
-            .border(6.dp, Color.White, shape)
-    ) {
-        val sx = maxWidth.value / 832f
-        val sy = maxHeight.value / 600f
-        Canvas(Modifier.fillMaxSize()) {
-            val u = density
-            drawRect(Color(0xFF8ED2F2))
-            val cell = 32 * u
-            for (row in 0..(size.height / cell).toInt()) for (col in 0..(size.width / cell).toInt()) {
-                if ((row + col) % 2 == 0) drawRect(Color(0xFF84CBEE), Offset(col * cell, row * cell), Size(cell, cell))
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val s = minOf(maxWidth.value / MapArt.WIDTH, maxHeight.value / MapArt.HEIGHT)
+        Box(
+            Modifier.size((MapArt.WIDTH * s).dp, (MapArt.HEIGHT * s).dp)
+                .drawBehind { drawRoundRect(Palette.edge, Offset(0f, 10.dp.toPx()), size, CornerRadius(28.dp.toPx())) }
+                .clip(shape)
+                .border(6.dp, Color.White, shape)
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawImage(image, dstSize = IntSize(size.width.toInt(), size.height.toInt()), filterQuality = FilterQuality.None)
             }
-            for ((r, color) in islands) {
-                val w = r[2] * sx * u; val h = r[3] * sy * u
-                val corner = CornerRadius(minOf(w, h) * 0.44f)
-                drawRoundRect(hex(color), Offset(r[0] * sx * u, r[1] * sy * u), Size(w, h), corner)
-                drawRoundRect(Color(0xFFF6E3B4), Offset(r[0] * sx * u + 5 * u, r[1] * sy * u + 5 * u), Size(w - 10 * u, h - 10 * u), corner, style = Stroke(10 * u))
+            MapArt.islands.forEachIndexed { w, island ->
+                WorldPin(w, w == selectedWorld, (island.cx * s).dp, ((island.cy - island.rh - 26) * s).dp)
             }
-            for (i in 0 until nodes.size - 1) {
-                drawLine(
-                    Color.White, Offset(nodes[i].first * sx * u, nodes[i].second * sy * u),
-                    Offset(nodes[i + 1].first * sx * u, nodes[i + 1].second * sy * u), 6 * u,
-                    StrokeCap.Round, PathEffect.dashPathEffect(floatArrayOf(2 * u, 14 * u))
-                )
-            }
+            val current = MapArt.islands[selectedWorld]
+            val ax by animateFloatAsState((current.cx - current.rw * 0.62f) * s, label = "alinaX")
+            val ay by animateFloatAsState((current.cy - 26) * s, label = "alinaY")
+            Sprite(PixelSprite.AlinaIdle, 3f, Modifier.offset((ax - 21).dp, (ay - 27).dp))
+            BasicText(
+                WorldThemes.ordered[selectedWorld].name, style = rounded(17.sp, FontWeight.Bold),
+                modifier = Modifier
+                    .offset((current.cx * s).dp - 90.dp, ((current.cy + current.rh + 22) * s).dp)
+                    .width(180.dp)
+                    .wrapContentWidth()
+                    .background(Color.White, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
         }
-        for (w in 0 until 9) WorldNode(w, w == selectedWorld, (nodes[w].first * sx).dp, (nodes[w].second * sy + 24).dp)
-        val cx by animateFloatAsState(nodes[selectedWorld].first * sx - 48, label = "alinaX")
-        val cy by animateFloatAsState(nodes[selectedWorld].second * sy - 6, label = "alinaY")
-        Sprite(PixelSprite.AlinaIdle, 3f, Modifier.offset((cx - 21).dp, (cy - 27).dp))
     }
 }
 
+/** World number with its stars, or a lock. */
 @Composable
-private fun WorldNode(world: Int, selected: Boolean, x: androidx.compose.ui.unit.Dp, y: androidx.compose.ui.unit.Dp) {
-    val theme = WorldThemes.ordered[world]
+private fun WorldPin(world: Int, selected: Boolean, x: androidx.compose.ui.unit.Dp, y: androidx.compose.ui.unit.Dp) {
     val first = world * 3 + 1
     val unlocked = GameProgress.isUnlocked(first)
     val stars = (first..first + 2).sumOf { GameProgress.starCount(it) }
-    Column(Modifier.offset(x - 37.dp, y - 37.dp).width(74.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier.size(74.dp).then(if (selected) Modifier.border(4.dp, Palette.pink, CircleShape) else Modifier).padding(7.dp)
-                .drawBehind { drawCircle(if (selected) Palette.pinkDeep else Palette.ink.copy(alpha = 0.2f), center = center.copy(y = center.y + 5.dp.toPx())) }
-                .background(if (unlocked) hex(theme.grass[1]) else Color(0xFFB9AFA3), CircleShape)
-                .border(5.dp, Color.White, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            if (unlocked) BasicText("${world + 1}", style = rounded(22.sp, FontWeight.Black, Color.White))
-            else Glyph(Icons.Filled.Lock, Color.White, 20.dp)
-        }
-        Row(
-            Modifier.padding(top = 2.dp).alpha(if (unlocked) 1f else 0f).background(Color.White, CircleShape).padding(horizontal = 8.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Glyph(Icons.Filled.Star, Palette.gold, 14.dp)
-            BasicText("$stars", style = rounded(12.sp, FontWeight.ExtraBold, Palette.goldText))
+    val cleared = GameProgress.isCompleted(first + 2)
+    Box(Modifier.offset(x - 50.dp, y - 16.dp).width(100.dp), contentAlignment = Alignment.Center) {
+        if (unlocked) {
+            Row(
+                Modifier.scale(if (selected) 1.12f else 1f).height(32.dp)
+                    .drawBehind {
+                        val r = CornerRadius(10.dp.toPx())
+                        drawRoundRect(if (selected) Palette.pinkDeep else Palette.ink.copy(alpha = 0.25f), Offset(0f, 4.dp.toPx()), size, r)
+                        drawRoundRect(if (selected) Palette.pink else if (cleared) Palette.mint else Color(0xFF4AA8E8), cornerRadius = r)
+                    }
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                BasicText("${world + 1}", style = rounded(17.sp, FontWeight.Black, Color.White))
+                Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                    for (i in 0 until 3) Glyph(Icons.Filled.Star, if (i < (stars + 2) / 3) Palette.gold else Color.White.copy(alpha = 0.45f), 11.dp)
+                }
+            }
+        } else {
+            Box(Modifier.size(32.dp).background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                Glyph(Icons.Filled.Lock, Palette.muted, 15.dp)
+            }
         }
     }
 }

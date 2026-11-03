@@ -10,7 +10,8 @@ enum StoryCatalog {
     static let actIntros: [Int: String] = [
         1: "Act I — Awakening: The Lumen Isles dim as the Night Crown scatters nine Heart Crystals.",
         2: "Act II — Fracture: Broken bridges and restless shadows test Alina's courage.",
-        3: "Act III — Night Crown: Storm and spire await before the throne of stolen light."
+        3: "Act III — Night Crown: Storm and spire await before the throne of stolen light.",
+        4: "Act IV — Beyond the Isles: Snow, sea and sky hide three last crystals."
     ]
 
     static func beat(for mission: Mission) -> StoryBeat {

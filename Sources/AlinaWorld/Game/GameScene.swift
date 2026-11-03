@@ -49,6 +49,7 @@ final class GameScene: SKScene {
     private var questionBlocks: [BlockNode] = []
     private var brickBlocks: [BlockNode] = []
     private var collectibles: [CollectibleNode] = []
+    private var springRects: [CGRect] = []
     private var bloomBlocksOpened = 0
 
     private var hearts = 3
@@ -100,6 +101,10 @@ final class GameScene: SKScene {
         let blocks = level.worldNode.children.compactMap { $0 as? BlockNode }
         questionBlocks = blocks.filter { $0.blockKind == .question }.sorted { $0.position.x < $1.position.x }
         brickBlocks = blocks.filter { $0.blockKind == .brick }
+        springRects = blocks.filter { $0.blockKind == .spring }.map {
+            CGRect(x: $0.position.x - 16, y: $0.position.y - 16, width: 32, height: 32)
+        }
+        alina.slippery = level.theme.key == "frost"
 
         maxHearts = assistMode ? 4 : 3
         hearts = maxHearts
@@ -152,6 +157,8 @@ final class GameScene: SKScene {
         gamePaused = true
         isPaused = true
         InputController.shared.mode = .menu
+        // Esc sets both pause and escape; drop the escape too, or the pause menu reads it as "resume" at once.
+        InputController.shared.clearPresses()
     }
 
     func resumeGame() {
@@ -193,6 +200,12 @@ final class GameScene: SKScene {
 
         updateMovingPlatforms(dt: dt)
         alina.update(input: InputController.shared, delta: clamped, difficulty: mission.difficulty)
+        if alina.didAirJump {
+            GameGraphics.burst(
+                at: CGPoint(x: alina.position.x, y: alina.position.y - 14), in: level.worldNode,
+                colors: [.white, SKColor(hex: 0xFF8DBE)], count: 10, speed: 120
+            )
+        }
         moveAndCollide(delta: clamped)
 
         for enemy in level.enemies where enemy.alive {
@@ -241,6 +254,7 @@ final class GameScene: SKScene {
     private func moveAndCollide(delta: TimeInterval) {
         let dt = CGFloat(delta)
         var rect = alina.collisionRect
+        let previousFeet = rect.minY
 
         rect.origin.x += alina.velocityX * dt
         rect.origin.x = max(0, min(mapWidth - rect.width, rect.origin.x))
@@ -250,7 +264,8 @@ final class GameScene: SKScene {
         alina.onGround = false
         resolveAxis(&rect, axis: .vertical)
         checkSlopeCollisionVertical(&rect)
-        checkPlatformCollision(&rect)
+        checkPlatformCollision(&rect, previousFeet: previousFeet)
+        checkSprings(rect)
 
         alina.position = CGPoint(x: rect.midX, y: rect.midY)
         checkHeadBonk()
@@ -295,12 +310,13 @@ final class GameScene: SKScene {
         }
     }
 
-    private func checkPlatformCollision(_ rect: inout CGRect) {
+    /// One-way leaf-pads: Alina lands when her feet cross the top this frame, however fast she falls.
+    private func checkPlatformCollision(_ rect: inout CGRect, previousFeet: CGFloat) {
         guard alina.velocityY <= 0 else { return }
         let feetY = rect.minY
 
         for platformRect in platformRects where rect.maxX > platformRect.minX + 2 && rect.minX < platformRect.maxX - 2 {
-            if feetY <= platformRect.maxY && feetY >= platformRect.maxY - 10 {
+            if feetY <= platformRect.maxY && previousFeet >= platformRect.maxY - 2 {
                 rect.origin.y = platformRect.maxY
                 alina.onGround = true
                 alina.velocityY = 0
@@ -316,6 +332,17 @@ final class GameScene: SKScene {
                 alina.onGround = true
                 alina.velocityY = 0
             }
+        }
+    }
+
+    /// Coral shells launch Alina when she runs into one or lands on it, so auto-run can ride them.
+    private func checkSprings(_ rect: CGRect) {
+        guard alina.velocityY <= 0 else { return }
+        let touch = rect.insetBy(dx: -3, dy: -2)
+        for spring in springRects where touch.intersects(spring) && rect.minY >= spring.minY - 2 {
+            alina.applyBounce(velocity: 980)
+            ChiptuneEngine.shared.play(.spring)
+            return
         }
     }
 
@@ -425,7 +452,7 @@ final class GameScene: SKScene {
     private func checkCollectibles() {
         let playerRect = alina.collisionRect.insetBy(dx: -4, dy: -4)
         let world = builtLevel?.worldNode ?? self
-        for item in collectibles where item.parent != nil && item.alpha > 0.5 {
+        for item in collectibles where item.parent != nil && !item.collected && item.alpha > 0.5 {
             let itemRect = CGRect(x: item.position.x - 12, y: item.position.y - 12, width: 24, height: 24)
             guard playerRect.intersects(itemRect) else { continue }
             item.collect()

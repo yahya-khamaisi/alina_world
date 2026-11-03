@@ -22,9 +22,9 @@ class Box(var x: Float, var y: Float, var w: Float, var h: Float) {
 enum class Tile(val ch: Char) {
     Empty('.'), Solid('#'), Ground('='), Brick('B'), Question('?'), Pipe('P'), Coin('C'), Crystal('*'), Flag('F'),
     Enemy('E'), Hazard('^'), Boss('X'), SlopeUpRight('/'), SlopeUpLeft('\\'), SlopeDownRight('}'), SlopeDownLeft('{'),
-    Platform('_'), Moving('M');
+    Platform('_'), Moving('M'), Spring('S');
 
-    val isSolid get() = this in setOf(Solid, Ground, Brick, Question, Pipe, SlopeUpRight, SlopeUpLeft, SlopeDownRight, SlopeDownLeft, Platform, Moving)
+    val isSolid get() = this in setOf(Solid, Ground, Brick, Question, Pipe, SlopeUpRight, SlopeUpLeft, SlopeDownRight, SlopeDownLeft, Platform, Moving, Spring)
     val isSlope get() = this == SlopeUpRight || this == SlopeUpLeft || this == SlopeDownRight || this == SlopeDownLeft
 
     companion object {
@@ -48,7 +48,7 @@ class TileMap(rows: List<String>) {
 
 enum class BlockKind(val sprite: PixelSprite) {
     Solid(PixelSprite.Stone), Ground(PixelSprite.GroundTop), Brick(PixelSprite.Mossbrick),
-    Question(PixelSprite.BloomBlock), Pipe(PixelSprite.Log)
+    Question(PixelSprite.BloomBlock), Pipe(PixelSprite.Log), Spring(PixelSprite.SpringShell)
 }
 
 class Block(val kind: BlockKind, val col: Int, val row: Int, val topExposed: Boolean) {
@@ -134,7 +134,7 @@ enum class EnemyKind {
     Boss
 }
 
-class Enemy(val kind: EnemyKind, patrol: Int = 80) {
+class Enemy(val kind: EnemyKind, patrol: Int = 80, themeKey: String = "meadow") {
     var x = 0f
     var y = 0f
     private var originX = 0f
@@ -150,7 +150,15 @@ class Enemy(val kind: EnemyKind, patrol: Int = 80) {
     var dyingT = -1f; private set
     val gone get() = dyingT >= 0.27f
 
-    val frames: List<PixelSprite> = when (kind) {
+    val frames: List<PixelSprite> = when {
+        // Act IV worlds dress the crawler and flyer as their own minions.
+        kind == EnemyKind.Crawler && themeKey == "frost" -> listOf(PixelSprite.Frostpuff)
+        kind == EnemyKind.Crawler && themeKey == "coral" -> listOf(PixelSprite.Shellcrab)
+        kind == EnemyKind.Flyer && themeKey == "starfall" -> listOf(PixelSprite.Starwisp)
+        else -> defaultFrames(kind)
+    }
+
+    private fun defaultFrames(kind: EnemyKind) = when (kind) {
         EnemyKind.Crawler -> listOf(PixelSprite.Gloomling, PixelSprite.GloomlingStep)
         EnemyKind.Spiky -> listOf(PixelSprite.Thornbeetle)
         EnemyKind.Flyer -> listOf(PixelSprite.Mothwisp, PixelSprite.MothwispFlap)
@@ -237,13 +245,15 @@ object LevelBuilder {
             val kind = map.kind(col, row)
             val cx = map.tileX(col) + t / 2
             val cy = map.tileY(row) + t / 2
-            if (kind.isSolid && !kind.isSlope && kind != Tile.Moving) solid[row * map.width + col] = true
+            // Leaf-pads are one-way: Alina jumps up through them and lands on top.
+            if (kind.isSolid && !kind.isSlope && kind != Tile.Moving && kind != Tile.Platform) solid[row * map.width + col] = true
             when (kind) {
-                Tile.Solid, Tile.Ground, Tile.Brick, Tile.Question, Tile.Pipe -> {
+                Tile.Solid, Tile.Ground, Tile.Brick, Tile.Question, Tile.Pipe, Tile.Spring -> {
                     val topExposed = !map.kind(col, row - 1).isSolid
                     val bk = when (kind) {
                         Tile.Solid -> BlockKind.Solid; Tile.Brick -> BlockKind.Brick
-                        Tile.Question -> BlockKind.Question; Tile.Pipe -> BlockKind.Pipe; else -> BlockKind.Ground
+                        Tile.Question -> BlockKind.Question; Tile.Pipe -> BlockKind.Pipe; Tile.Spring -> BlockKind.Spring
+                        else -> BlockKind.Ground
                     }
                     blocks[row * map.width + col] = Block(bk, col, row, topExposed)
                 }
@@ -253,9 +263,9 @@ object LevelBuilder {
                 Tile.Enemy -> {
                     crawlerCount++
                     val spiky = spikyEnabled && crawlerCount % 3 == 0
-                    enemies += Enemy(if (spiky) EnemyKind.Spiky else EnemyKind.Crawler).also { it.configure(cx, cy, spriteHeight(it)) }
+                    enemies += Enemy(if (spiky) EnemyKind.Spiky else EnemyKind.Crawler, themeKey = theme.key).also { it.configure(cx, cy, spriteHeight(it)) }
                 }
-                Tile.Boss -> enemies += Enemy(EnemyKind.Boss, 120).also { it.configure(cx, cy, spriteHeight(it)) }
+                Tile.Boss -> enemies += Enemy(EnemyKind.Boss, 120, theme.key).also { it.configure(cx, cy, spriteHeight(it)) }
                 Tile.Hazard -> hazards += floatArrayOf(cx, cy)
                 Tile.Moving -> platforms += MovingPlatform(platformPath(col, row, rows), 50 + Random.nextFloat() * 30)
                 else -> Unit
@@ -266,7 +276,7 @@ object LevelBuilder {
             val kind = when (p.kind.lowercase()) {
                 "flyer", "fly" -> EnemyKind.Flyer; "boss" -> EnemyKind.Boss; "spiky" -> EnemyKind.Spiky; else -> EnemyKind.Crawler
             }
-            val e = Enemy(kind, p.patrol ?: 80)
+            val e = Enemy(kind, p.patrol ?: 80, theme.key)
             e.configure(map.tileX(p.x) + t / 2, map.tileY(p.y) + t / 2, spriteHeight(e))
             enemies += e
         }

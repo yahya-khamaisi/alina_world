@@ -12,11 +12,21 @@ class Song private constructor(
     val lead: IntArray,
     val harmony: IntArray,
     val bass: IntArray,
-    val drums: CharArray
+    val drums: CharArray,
+    /** Sound of the melody and of the harmony line; the bass is always a soft triangle. */
+    val leadVoice: Instrument,
+    val harmonyVoice: Instrument,
+    /** 0…1 drum volume, so gentle worlds keep the beat quiet. */
+    val drumLevel: Float,
+    /** 0 plays straight eighths; 0.1–0.15 gives a light, bouncy swing. */
+    val swing: Double
 ) {
     val length: Int get() = maxOf(maxOf(lead.size, harmony.size), maxOf(bass.size, drums.size))
 
-    fun withTempo(factor: Double) = Song(name, bpm * factor, loops, lead, harmony, bass, drums)
+    fun withTempo(factor: Double) = Song(
+        "$name (guardian)", bpm * factor, loops, lead, harmony, bass, drums, leadVoice, harmonyVoice,
+        minOf(1f, drumLevel * 1.3f), swing
+    )
 
     companion object {
         const val HOLD = 0
@@ -24,10 +34,13 @@ class Song private constructor(
 
         operator fun invoke(
             name: String, bpm: Double, loops: Boolean = true,
+            leadVoice: Instrument = Instrument.Chip, harmonyVoice: Instrument = Instrument.Chip,
+            drumLevel: Float = 1f, swing: Double = 0.0,
             lead: List<String>, harmony: List<String> = emptyList(), bass: List<String>, drums: List<String> = emptyList()
         ) = Song(
             name, bpm, loops, parse(lead), parse(harmony), parse(bass),
-            drums.joinToString(" ").split(" ").filter { it.isNotEmpty() }.map { it.first() }.toCharArray()
+            drums.joinToString(" ").split(" ").filter { it.isNotEmpty() }.map { it.first() }.toCharArray(),
+            leadVoice, harmonyVoice, drumLevel, swing
         )
 
         private fun parse(bars: List<String>): IntArray =
@@ -48,81 +61,42 @@ class Song private constructor(
     }
 }
 
+/** Synth voices: a waveform with its own envelope, so a song can sound like a flute or a music box. */
+enum class Instrument(
+    val wave: Wave,
+    /** Level the note settles to after its attack; 0 lets it ring out like a struck bell. */
+    val sustain: Float,
+    /** Seconds for the attack to fall to the sustain level. */
+    val decay: Double,
+    val level: Float,
+    /** Pitch wobble depth for breathy voices. */
+    val vibrato: Double = 0.0
+) {
+    Chip(Wave.Pulse25, 0.55f, 0.12, 0.15f),
+    SoftSquare(Wave.Pulse50, 0.45f, 0.12, 0.07f),
+    Pluck(Wave.Pulse25, 0f, 0.1, 0.1f),
+    Flute(Wave.Triangle, 0.7f, 0.12, 0.2f, 0.004),
+    Ocarina(Wave.Sine, 0.7f, 0.12, 0.2f, 0.003),
+    Whistle(Wave.Sine, 0.85f, 0.12, 0.2f, 0.006),
+    Bell(Wave.Bell, 0f, 0.38, 0.24f),
+    MusicBox(Wave.Bell, 0f, 0.55, 0.24f),
+    Celesta(Wave.Bell, 0f, 0.22, 0.18f),
+    Steel(Wave.Steel, 0f, 0.28, 0.24f),
+    Organ(Wave.Pulse50, 0.85f, 0.12, 0.07f),
+    Pad(Wave.Triangle, 0.85f, 0.5, 0.08f);
+
+    enum class Wave { Pulse50, Pulse25, Triangle, Sine, Bell, Steel }
+}
+
 /**
- * Original compositions for Alina World, shared with the Mac app. Bright C major on the menus, a skipping
- * F major for the dawn worlds, a wistful A minor for dusk, and a driving D minor for the Night Crown.
+ * Original compositions for Alina World, shared with the Mac app: a theme for the isles and one song per world
+ * (see Scripts/compose-songs.py and the generated Soundtrack.kt).
  */
 object Songs {
-    val title = Song(
-        name = "Lumen Isles", bpm = 112.0,
-        lead = listOf(
-            "E5 . G5 . C6 . G5 .", "A5 . . . E5 . C5 .", "F5 . A5 . C6 . A5 .", "G5 . . . D5 . B4 .",
-            "E5 . G5 . C6 . D6 .", "E6 . D6 . C6 . A5 .", "A5 . C6 . B5 . G5 .", "C6 . . . - . . ."
-        ),
-        harmony = listOf(
-            "C4 E4 G4 E4 C4 E4 G4 E4", "A3 C4 E4 C4 A3 C4 E4 C4", "F3 A3 C4 A3 F3 A3 C4 A3", "G3 B3 D4 B3 G3 B3 D4 B3",
-            "C4 E4 G4 E4 C4 E4 G4 E4", "A3 C4 E4 C4 A3 C4 E4 C4", "F3 A3 C4 A3 G3 B3 D4 B3", "C4 E4 G4 E4 C4 - . ."
-        ),
-        bass = listOf(
-            "C3 . G3 . C3 . G3 .", "A2 . E3 . A2 . E3 .", "F2 . C3 . F2 . C3 .", "G2 . D3 . G2 . D3 .",
-            "C3 . G3 . C3 . G3 .", "A2 . E3 . A2 . E3 .", "F2 . C3 . G2 . D3 .", "C3 . G3 . C3 - . ."
-        ),
-        drums = List(7) { "k h s h k h s h" } + "k h s h k - - -"
-    )
-
-    private val dawnRun = Song(
-        name = "Dawn Run", bpm = 150.0,
-        lead = listOf(
-            "A4 . C5 . F5 . A5 .", "G5 . E5 . C5 . E5 .", "F5 . A5 . D6 . A5 .", "Bb5 . A5 . G5 . F5 .",
-            "A5 . A5 C6 . A5 F5 .", "G5 . G5 Bb5 . G5 E5 .", "D5 F5 Bb5 . C6 . E5 G5", "F5 . . . - . . ."
-        ),
-        harmony = listOf(
-            "- A4 - A4 - A4 - A4", "- G4 - G4 - G4 - G4", "- F4 - F4 - F4 - F4", "- D5 - D5 - D5 - D5",
-            "- A4 - A4 - A4 - A4", "- G4 - G4 - G4 - G4", "- D5 - D5 - E5 - E5", "- A4 - A4 - . . ."
-        ),
-        bass = listOf(
-            "F2 F3 F2 F3 F2 F3 F2 F3", "C3 C4 C3 C4 C3 C4 C3 C4", "D3 D4 D3 D4 D3 D4 D3 D4", "Bb2 Bb3 Bb2 Bb3 Bb2 Bb3 Bb2 Bb3",
-            "F2 F3 F2 F3 F2 F3 F2 F3", "C3 C4 C3 C4 C3 C4 C3 C4", "Bb2 Bb3 Bb2 Bb3 C3 C4 C3 C4", "F2 F3 F2 F3 F2 . - ."
-        ),
-        drums = List(7) { "k h s h k k s h" } + "k h s h k s s s"
-    )
-
-    private val duskTrail = Song(
-        name = "Dusk Trail", bpm = 128.0,
-        lead = listOf(
-            "E5 . A5 . B5 . C6 .", "A5 . . . F5 . A5 .", "G5 . E5 . G5 . C6 .", "B5 . . . G5 . D5 .",
-            "C6 . B5 . A5 . E5 .", "F5 . A5 . C6 . A5 .", "D6 . C6 . B5 . G#5 .", "A5 . . . - . . ."
-        ),
-        harmony = listOf(
-            "A4 C5 E5 C5 A4 C5 E5 C5", "F4 A4 C5 A4 F4 A4 C5 A4", "E4 G4 C5 G4 E4 G4 C5 G4", "D4 G4 B4 G4 D4 G4 B4 G4",
-            "A4 C5 E5 C5 A4 C5 E5 C5", "F4 A4 C5 A4 F4 A4 C5 A4", "D4 F4 A4 F4 E4 G#4 B4 G#4", "A4 C5 E5 C5 A4 - . ."
-        ),
-        bass = listOf(
-            "A2 . A2 E3 A2 . G2 .", "F2 . F2 C3 F2 . E2 .", "C3 . C3 G3 C3 . B2 .", "G2 . G2 D3 G2 . F#2 .",
-            "A2 . A2 E3 A2 . G2 .", "F2 . F2 C3 F2 . E2 .", "D3 . D3 A2 E3 . E2 .", "A2 . E3 . A2 - . ."
-        ),
-        drums = List(7) { "k - h - s - h h" } + "k - h - s s s s"
-    )
-
-    private val nightCrown = Song(
-        name = "Night Crown", bpm = 156.0,
-        lead = listOf(
-            "D5 . F5 . A5 . D6 .", "D6 . C6 . Bb5 . F5 .", "E5 . G5 . C6 . E6 .", "E6 . . . C#6 . A5 .",
-            "F6 . E6 . D6 . A5 .", "Bb5 . A5 . F5 . D5 .", "G5 . Bb5 . A5 . C#6 .", "D6 . . . - . . ."
-        ),
-        harmony = listOf(
-            "- F4 - F4 - F4 - F4", "- D4 - D4 - D4 - D4", "- E4 - E4 - E4 - E4", "- C#5 - C#5 - C#5 - C#5",
-            "- F4 - F4 - F4 - F4", "- D4 - D4 - D4 - D4", "- Bb4 - Bb4 - C#5 - C#5", "- F4 - F4 - . . ."
-        ),
-        bass = listOf(
-            "D2 D3 D2 D3 D2 D3 D2 D3", "Bb1 Bb2 Bb1 Bb2 Bb1 Bb2 Bb1 Bb2", "C2 C3 C2 C3 C2 C3 C2 C3", "A1 A2 A1 A2 A1 A2 A1 A2",
-            "D2 D3 D2 D3 D2 D3 D2 D3", "Bb1 Bb2 Bb1 Bb2 Bb1 Bb2 Bb1 Bb2", "G1 G2 G1 G2 A1 A2 A1 A2", "D2 D3 D2 D3 D2 . - ."
-        ),
-        drums = List(7) { "k h s h k h s s" } + "k s k s k s s s"
-    )
+    val title: Song get() = worldSongs.getValue("title")
 
     val victory = Song(
-        name = "Crystal Restored", bpm = 150.0, loops = false,
+        name = "Crystal Restored", bpm = 150.0, loops = false, leadVoice = Instrument.Bell, harmonyVoice = Instrument.Pluck,
         lead = listOf("C5 E5 G5 C6 . G5 C6 . . . . -"),
         harmony = listOf("- C5 - E5 . - E5 . . . . -"),
         bass = listOf("C3 . . . . G2 C3 . . . . -"),
@@ -130,14 +104,14 @@ object Songs {
     )
 
     val defeat = Song(
-        name = "Try Again", bpm = 96.0, loops = false,
+        name = "Try Again", bpm = 96.0, loops = false, leadVoice = Instrument.Flute,
         lead = listOf("G4 . F#4 . F4 . E4 . . . -"),
         bass = listOf("C3 . B2 . Bb2 . A2 . . . -")
     )
 
-    /** Level music by act (worlds 1–3, 4–6, 7–9); guardian missions play it faster. */
-    fun level(worldIndex: Int, guardian: Boolean): Song {
-        val base = if (worldIndex < 3) dawnRun else if (worldIndex < 6) duskTrail else nightCrown
-        return if (guardian) base.withTempo(1.1) else base
+    /** Each world's own song; guardian missions play it a little faster with more drums. */
+    fun world(key: String, guardian: Boolean): Song {
+        val base = worldSongs[key] ?: title
+        return if (guardian) base.withTempo(1.08) else base
     }
 }

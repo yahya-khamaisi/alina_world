@@ -5,7 +5,8 @@ enum class PixelSprite {
     Gloomling, GloomlingStep, Thornbeetle, Mothwisp, MothwispFlap, Guardian,
     Petal, PetalTurn, Crystal, Sunbloom, Ribbon, Heart, HeartEmpty,
     BloomBlock, BloomBlockUsed, Mossbrick, GroundTop, GroundFill, Stone, Log, Thorns, LeafPad, CloudPad, Beacon,
-    Sun, Cloud, Tree, Bush, Flower, HillFar, HillNear
+    Sun, Cloud, Tree, Bush, Flower, HillFar, HillNear,
+    Frostpuff, Shellcrab, Starwisp, SpringShell
 }
 
 /**
@@ -25,7 +26,8 @@ object PixelCatalog {
         'a' to 0xE6E0D4, 'e' to 0xC7BDAD, 'd' to 0x938674, // stone
         'q' to 0xE09466, 'w' to 0xB0643F, 'z' to 0xF4DDBE, 't' to 0x6B4A30, // brick, mortar, wood
         'i' to 0xA6E37E, 'g' to 0x76CF63, 'x' to 0x3E9147, 'u' to 0xD9A86C, 's' to 0xA98563,
-        'v' to 0x55B85C, 'V' to 0x2F8A45, 'k' to 0xBDE6D2, 'b' to 0x9CD4BD, 'j' to 0x86C2AA
+        'v' to 0x55B85C, 'V' to 0x2F8A45, 'k' to 0xBDE6D2, 'b' to 0x9CD4BD, 'j' to 0x86C2AA,
+        'f' to 0xFF7E6B, 'p' to 0xFFC0B0, 'U' to 0xA9C9E8, 'J' to 0x3E7FC4 // coral, coral light, ice, ice shadow
     )
 
     fun rows(sprite: PixelSprite): List<String> = when (sprite) {
@@ -64,6 +66,10 @@ object PixelCatalog {
         PixelSprite.Bush -> bush
         PixelSprite.Flower -> flower
         PixelSprite.HillFar -> hillFar
+        PixelSprite.Frostpuff -> frostpuff
+        PixelSprite.Shellcrab -> shellcrab
+        PixelSprite.Starwisp -> starwisp
+        PixelSprite.SpringShell -> springShell
         PixelSprite.HillNear -> hillFar.map { row ->
             row.map { ch -> when (ch) { 'b' -> 'g'; 'k' -> 'i'; 'j' -> 'x'; else -> ch } }.joinToString("")
         }
@@ -168,6 +174,28 @@ object PixelCatalog {
         "NNNNNNNNNNNNNNNN",
         ".NNNN.NNNN.NNNN.",
         "..NN...NN...NN.."
+    )
+
+    // Act IV minions: Frostpeak, Coral Lagoon and Starfall variants of the crawler and flyer.
+
+    private val frostpuff = listOf(
+        "....UUUU....", "..UUOOOOUU..", ".UOOOOOOOOU.", ".UOOJOOJOOU.", ".UOOJOOJOOU.",
+        "UOOOOOOOOOOU", "UOOOOUUOOOOU", "UOOOOOOOOOOU", ".UUU.UU.UUU.", "..U..UU..U.."
+    )
+    private val shellcrab = listOf(
+        ".f........f.", "fpf......fpf", ".f..ffff..f.", "...fppppf...", "..ffLffLff..",
+        ".ffppppppff.", "ffppppppppff", ".ffffffffff.", ".f.f....f.f.", "f..f....f..f"
+    )
+    private val starwisp = listOf(
+        ".....G......", "....GYG.....", "GGGGGYGGGGG.", ".GYYLYLYYG..", "..GYYYYYG...",
+        ".GYYG.GYYG..", ".GG.....GG..", "............"
+    )
+    /** Coral Lagoon spring: landing on it bounces Alina high. */
+    private val springShell = listOf(
+        "................", "................", "......ffff......", "....ffppppff....",
+        "...fpfpffpfpf...", "..fppfppppfppf..", "..fpfppffppfpf..", ".fppfppffppfppf.",
+        ".fpfppfffppfpff.", ".fppfppffppfppf.", "fppfppfppfppfppf", "ffffffffffffffff",
+        "..uuuuuuuuuuuu..", ".uuuuuuuuuuuuuu.", "uuuuuuuuuuuuuuuu", "uuuusuuuuuusuuuu"
     )
 
     // Items

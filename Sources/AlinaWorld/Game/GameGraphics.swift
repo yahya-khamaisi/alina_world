@@ -12,6 +12,7 @@ enum GameGraphics {
         case .brick: sprite = .mossbrick
         case .question: sprite = .bloomBlock
         case .pipe: sprite = .log
+        case .spring: sprite = .springShell
         }
         return PixelArt.node(sprite, theme: theme, scale: GameConstants.tilePixel)
     }
@@ -137,6 +138,22 @@ enum GameGraphics {
             emitter.particleSize = CGSize(width: 4, height: 4)
             emitter.emissionAngle = 0
             emitter.particleSpeed = 40
+            emitter.particlePositionRange = CGVector(dx: width * 1.4, dy: height)
+        case .snow:
+            emitter.particleBirthRate = 6
+            emitter.particleColor = SKColor(hex: 0xFFFFFF)
+            emitter.particleSize = CGSize(width: 5, height: 5)
+            emitter.emissionAngle = -.pi / 2 - 0.2
+            emitter.particleSpeed = 40
+            emitter.particleSpeedRange = 15
+        case .bubbles:
+            emitter.particleBirthRate = 2.5
+            emitter.particleColor = SKColor(hex: 0xE8FBFF)
+            emitter.particleAlpha = 0.7
+            emitter.particleSize = CGSize(width: 6, height: 6)
+            emitter.emissionAngle = .pi / 2
+            emitter.particleSpeed = 24
+            emitter.particleAlphaSpeed = -0.1
             emitter.particlePositionRange = CGVector(dx: width * 1.4, dy: height)
         case .sparkles, .motes:
             emitter.particleBirthRate = 3

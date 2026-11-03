@@ -6,6 +6,7 @@ enum BlockKind {
     case brick
     case question
     case pipe
+    case spring
 }
 
 final class BlockNode: SKNode {
