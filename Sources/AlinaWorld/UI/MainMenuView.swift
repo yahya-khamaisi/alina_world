@@ -22,27 +22,30 @@ struct MainMenuView: View {
 
             GeometryReader { proxy in
                 let groundTop = proxy.size.height - max(96, proxy.size.height * 0.16)
+                let center = proxy.size.width / 2
                 ZStack(alignment: .topLeading) {
-                    PixelImage(sprite: .alinaIdle, scale: 12)
-                        .offset(x: proxy.size.width * 0.6, y: groundTop - 216)
-                    PixelImage(sprite: .crystal, scale: 7)
-                        .offset(x: proxy.size.width * 0.6 + 210, y: groundTop - 290 + (bob ? -10 : 6))
+                    PixelImage(sprite: .crystal, scale: 6)
+                        .offset(x: center + 200, y: groundTop - 360 + (bob ? -10 : 6))
                     PixelImage(sprite: .petal, scale: 5)
-                        .offset(x: proxy.size.width * 0.6 - 110, y: groundTop - 170 + (bob ? 6 : -6))
+                        .offset(x: center - 260, y: groundTop - 300 + (bob ? 6 : -6))
                     PixelImage(sprite: .petal, scale: 4)
-                        .offset(x: proxy.size.width * 0.6 + 240, y: groundTop - 150 + (bob ? -4 : 4))
+                        .offset(x: center + 260, y: groundTop - 170 + (bob ? -4 : 4))
                 }
             }
             .ignoresSafeArea()
 
-            HStack(alignment: .top, spacing: Space.xl) {
-                menuCard
-                Spacer(minLength: 0)
-                statusColumn
+            VStack(spacing: 0) {
+                HStack {
+                    Spacer()
+                    stats
+                }
+                title.padding(.top, Space.s)
+                Spacer()
+                menu
             }
-            .padding(.horizontal, 40)
-            .padding(.top, WindowChrome.titleBarHeight + 12)
-            .padding(.bottom, 40)
+            .padding(.horizontal, Space.xxl)
+            .padding(.top, WindowChrome.titleBarHeight + Space.s)
+            .padding(.bottom, 48)
 
             MenuKeyboardDriver { handleKeys() }
         }
@@ -52,138 +55,87 @@ struct MainMenuView: View {
         }
     }
 
-    private var menuCard: some View {
-        VStack(alignment: .leading, spacing: 28) {
-            VStack(alignment: .leading, spacing: Space.m) {
-                Text("A Lumen Isles Adventure".uppercased())
-                    .font(.rounded(12, .heavy))
-                    .tracking(1)
-                    .foregroundStyle(Palette.goldText)
-                    .padding(.horizontal, Space.m)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color(hex: 0xFFF1D6)))
-                VStack(alignment: .leading, spacing: -6) {
-                    Text("Alina").foregroundStyle(Palette.ink)
-                    Text("World").foregroundStyle(Palette.pink)
-                }
-                .font(.rounded(60, .heavy))
-            }
+    private var title: some View {
+        HStack(spacing: 18) {
+            Text("Alina").foregroundStyle(Palette.ink)
+            Text("World").foregroundStyle(Palette.pink)
+        }
+        .font(.rounded(88, .heavy))
+        .shadow(color: .white, radius: 0, y: 5)
+        .shadow(color: Palette.edge, radius: 0, y: 9)
+        .accessibilityElement(children: .combine)
+    }
 
-            VStack(spacing: Space.m) {
-                Button(action: { activate(.play) }) {
-                    HStack(spacing: 14) {
-                        Image(systemName: "play.fill").font(.system(size: 20, weight: .bold))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(continueTitle).font(.rounded(22, .bold))
-                            Text(continueSubtitle)
-                                .font(.rounded(13, .bold))
-                                .foregroundStyle(Color(hex: 0xFFE3EF))
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 0)
-                        KeyCap(text: "↩", dark: true)
+    private var stats: some View {
+        HStack(spacing: Space.s) {
+            HStack(spacing: Space.s) {
+                PixelImage(sprite: .crystal, scale: 2)
+                Text("\(progress.crystalsRestored)/9")
+            }
+            .pill()
+            .accessibilityLabel("\(progress.crystalsRestored) of 9 Heart Crystals")
+            HStack(spacing: Space.s) {
+                Image(systemName: "star.fill").foregroundStyle(Palette.gold)
+                Text("\(progress.totalStars)")
+            }
+            .pill()
+            .accessibilityLabel("\(progress.totalStars) stars")
+            HStack(spacing: Space.s) {
+                PixelImage(sprite: .petal, scale: 2)
+                Text("\(progress.totalPetals)")
+            }
+            .pill()
+            .accessibilityLabel("\(progress.totalPetals) petals")
+        }
+        .font(.rounded(17, .bold))
+        .monospacedDigit()
+    }
+
+    private var menu: some View {
+        VStack(spacing: 20) {
+            // Alina stands on the Play button like a platform.
+            PixelImage(sprite: .alinaIdle, scale: 9)
+                .padding(.bottom, -26)
+                .zIndex(1)
+                .accessibilityHidden(true)
+
+            Button(action: { activate(.play) }) {
+                HStack(spacing: 14) {
+                    Image(systemName: "play.fill").font(.system(size: 28, weight: .bold))
+                    Text("Play").font(.rounded(34, .heavy))
+                    if let mission = continueMission {
+                        Text(mission.code)
+                            .font(.rounded(15, .heavy))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Palette.pinkText))
                     }
                 }
-                .buttonStyle(ChunkyButtonStyle(kind: .primary, height: 72, focused: nav.mainMenuFocus == Item.play.rawValue))
-                .onHover { if $0 { nav.mainMenuFocus = Item.play.rawValue } }
-
-                menuButton(.map, title: "World Map", icon: "map.fill", tint: Palette.sky,
-                           trailing: "\(progress.totalStars) ★")
-                menuButton(.settings, title: "Settings", icon: "gearshape.fill", tint: Color(hex: 0x8E7BD9), trailing: "⌘ ,")
-                menuButton(.quit, title: "Quit", icon: "xmark", tint: Palette.muted, trailing: "⌘ Q")
             }
+            .buttonStyle(TileButtonStyle(kind: .primary, size: 84, width: 320, focused: nav.mainMenuFocus == Item.play.rawValue))
+            .onHover { if $0 { nav.mainMenuFocus = Item.play.rawValue } }
+            .accessibilityLabel(continueMission.map { "Play mission \($0.code)" } ?? "Play")
 
-            Spacer(minLength: 0)
-
-            HStack(spacing: Space.s) {
-                KeyCap(text: "↑ ↓ Navigate")
-                KeyCap(text: "↩ Select")
-                KeyCap(text: "F Full Screen")
+            HStack(spacing: Space.l) {
+                tile(.map, icon: "map.fill", label: "World map")
+                tile(.settings, icon: "gearshape.fill", label: "Settings")
+                tile(.quit, icon: "power", label: "Quit")
             }
         }
-        .frame(width: 380, alignment: .leading)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .card(padding: Space.xxl)
     }
 
-    private func menuButton(_ item: Item, title: String, icon: String, tint: Color, trailing: String) -> some View {
+    private func tile(_ item: Item, icon: String, label: String) -> some View {
         Button(action: { activate(item) }) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .heavy))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(tint))
-                Text(title)
-                Spacer(minLength: 0)
-                Text(trailing).font(.rounded(13, .heavy)).foregroundStyle(Palette.muted)
-            }
+            Image(systemName: icon)
         }
-        .buttonStyle(ChunkyButtonStyle(kind: .secondary, focused: nav.mainMenuFocus == item.rawValue))
+        .buttonStyle(TileButtonStyle(kind: .white, size: 64, width: 64, focused: nav.mainMenuFocus == item.rawValue))
         .onHover { if $0 { nav.mainMenuFocus = item.rawValue } }
+        .help(label)
+        .accessibilityLabel(label)
     }
 
-    private var statusColumn: some View {
-        VStack(alignment: .trailing, spacing: Space.m) {
-            HStack(spacing: Space.s) {
-                HStack(spacing: Space.s) {
-                    PixelImage(sprite: .crystal, scale: 2)
-                    Text("\(progress.crystalsRestored) / 9 Crystals")
-                }
-                .pill()
-                HStack(spacing: Space.s) {
-                    PixelImage(sprite: .petal, scale: 2)
-                    Text("\(progress.totalPetals.formatted()) Petals")
-                }
-                .pill()
-            }
-
-            HStack(spacing: Space.m) {
-                Text("1")
-                    .font(.rounded(18, .bold))
-                    .foregroundStyle(Palette.goldText)
-                    .frame(width: 40, height: 40)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(hex: 0xFFF1D6)))
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Journey · \(Int(progress.completion * 100))%")
-                        .font(.rounded(14, .heavy))
-                        .foregroundStyle(Palette.ink)
-                    ProgressBar(value: progress.completion, tint: Palette.mint)
-                        .frame(width: 160)
-                    Text(playTimeLabel)
-                        .font(.rounded(12, .semibold))
-                        .foregroundStyle(Palette.muted)
-                }
-            }
-            .padding(.vertical, Space.m)
-            .padding(.leading, Space.m)
-            .padding(.trailing, Space.l)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.white)
-                    .shadow(color: Palette.edge, radius: 0, y: 4)
-            )
-        }
-    }
-
-    private var continueMissionInfo: Mission? {
+    private var continueMission: Mission? {
         MissionLoader.mission(id: progress.continueMission)
-    }
-
-    private var continueTitle: String {
-        progress.unlockedMission <= 1 && !progress.isCompleted(missionID: 1) ? "Start Journey" : "Continue"
-    }
-
-    private var continueSubtitle: String {
-        guard let mission = continueMissionInfo else { return "" }
-        let world = WorldThemes.theme(for: mission.world)
-        return "\(world.name) · Mission \(mission.id)"
-    }
-
-    private var playTimeLabel: String {
-        let minutes = Int(progress.totalPlayTime / 60)
-        if minutes == 0 { return "A new adventure awaits" }
-        return minutes < 60 ? "\(minutes) min played" : "\(minutes / 60) h \(minutes % 60) m played"
     }
 
     private func activate(_ item: Item) {
@@ -197,8 +149,13 @@ struct MainMenuView: View {
 
     private func handleKeys() {
         let input = InputController.shared
-        if input.consumeUp() { nav.mainMenuFocus = max(0, nav.mainMenuFocus - 1) }
-        if input.consumeDown() { nav.mainMenuFocus = min(Item.allCases.count - 1, nav.mainMenuFocus + 1) }
+        let focus = nav.mainMenuFocus
+        var next = focus
+        if input.consumeUp() { next = Item.play.rawValue }
+        if input.consumeDown(), focus == Item.play.rawValue { next = Item.map.rawValue }
+        if input.consumeLeft(), focus > Item.map.rawValue { next = focus - 1 }
+        if input.consumeRight() { next = min(Item.quit.rawValue, max(Item.map.rawValue, focus + 1)) }
+        if next != focus { nav.mainMenuFocus = next; ChiptuneEngine.shared.play(.select) }
         if input.consumeEnter(), let item = Item(rawValue: nav.mainMenuFocus) { activate(item) }
         if input.consumeFullscreen() { AppWindowController.toggleFullscreen() }
         _ = input.consumeEscape()

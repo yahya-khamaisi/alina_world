@@ -23,6 +23,8 @@ final class GameSession: ObservableObject {
         }
         scene.onPauseRequested = { [weak self] in
             MenuNavigationState.shared.overlayFocus = 0
+            ChiptuneEngine.shared.play(.pause)
+            ChiptuneEngine.shared.setDucked(true)
             self?.paused = true
         }
         showHint = defaults.object(forKey: SettingsKey.showHints) as? Bool ?? true
@@ -52,15 +54,19 @@ final class GameSession: ObservableObject {
     func pause() {
         scene.pauseGame()
         MenuNavigationState.shared.overlayFocus = 0
+        ChiptuneEngine.shared.play(.pause)
+        ChiptuneEngine.shared.setDucked(true)
         paused = true
     }
 
     func resume() {
+        ChiptuneEngine.shared.setDucked(false)
         paused = false
         scene.resumeGame()
     }
 
     func restartFromCheckpoint() {
+        ChiptuneEngine.shared.setDucked(false)
         paused = false
         scene.restartFromCheckpoint()
     }
@@ -88,7 +94,7 @@ struct GameContainerView: View {
             SpriteView(scene: session.scene, preferredFramesPerSecond: frameRate, options: [.ignoresSiblingOrder])
                 .ignoresSafeArea()
 
-            HUDOverlay(mission: mission, hud: session.hud, showHint: session.showHint, onPause: session.pause)
+            HUDOverlay(mission: mission, hud: session.hud, showHint: session.showHint && !session.paused, onPause: session.pause)
                 .padding(.top, WindowChrome.titleBarHeight)
                 .allowsHitTesting(!session.paused)
 

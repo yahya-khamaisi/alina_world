@@ -102,6 +102,8 @@ enum SettingsKey {
     static let showHints = "settings.showHints"
     static let frameRate = "settings.frameRate"
     static let reduceMotion = "settings.reduceMotion"
+    static let musicVolume = "settings.musicVolume"
+    static let effectsVolume = "settings.effectsVolume"
 }
 
 private extension Int {

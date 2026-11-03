@@ -330,6 +330,7 @@ final class GameScene: SKScene {
             block.revealed = true
             block.markUsed()
             alina.velocityY = 0
+            ChiptuneEngine.shared.play(.bump)
             openBloomBlock(block)
         }
 
@@ -343,10 +344,12 @@ final class GameScene: SKScene {
                     at: block.position, in: builtLevel?.worldNode ?? self,
                     colors: [SKColor(hex: 0xE09466), SKColor(hex: 0xB0643F), SKColor(hex: 0x76CF63)], count: 8, speed: 200
                 )
+                ChiptuneEngine.shared.play(.brickBreak)
                 block.removeFromParent()
                 brickBlocks.removeAll { $0 == block }
                 solidRects.removeAll { $0 == blockRect }
             } else {
+                ChiptuneEngine.shared.play(.bump)
                 block.bump()
             }
         }
@@ -367,6 +370,7 @@ final class GameScene: SKScene {
             collectibles.append(item)
         } else {
             petals += 1
+            ChiptuneEngine.shared.play(.petal)
             GameGraphics.popText("+1", color: SKColor(hex: 0xC13B73), at: CGPoint(x: block.position.x, y: block.position.y + 30), in: world)
         }
     }
@@ -383,6 +387,7 @@ final class GameScene: SKScene {
         if stomping && enemy.enemyKind != .spiky {
             let defeated = enemy.stomp()
             alina.applyBounce()
+            ChiptuneEngine.shared.play(.stomp)
             GameGraphics.burst(at: enemy.position, in: builtLevel?.worldNode ?? self, colors: [SKColor(hex: 0x5E52A0), .white], count: 8)
             if defeated {
                 petals += enemy.enemyKind == .boss ? 10 : 2
@@ -402,6 +407,7 @@ final class GameScene: SKScene {
     private func takeHit(fromX x: CGFloat) {
         guard alina.hurtCooldown <= 0 else { return }
         hits += 1
+        ChiptuneEngine.shared.play(.hurt)
         let shielded = alina.absorbHit()
         alina.knockback(from: x)
         if !shielded {
@@ -426,16 +432,20 @@ final class GameScene: SKScene {
             switch item.kind {
             case .coin:
                 petals += 1
+                ChiptuneEngine.shared.play(.petal)
                 GameGraphics.burst(at: item.position, in: world, colors: [SKColor(hex: 0xFF8DBE), SKColor(hex: 0xF6C343)], count: 6, speed: 90)
             case .crystal:
                 shards += 1
+                ChiptuneEngine.shared.play(.shard)
                 GameGraphics.burst(at: item.position, in: world, colors: [SKColor(hex: 0xF6C343), .white], count: 12)
                 GameGraphics.popText("Shard \(shards)", color: SKColor(hex: 0xA86A00), at: CGPoint(x: item.position.x, y: item.position.y + 26), in: world)
             case .sunbloom:
                 alina.grantBloom()
+                ChiptuneEngine.shared.play(.powerUp)
                 GameGraphics.popText("Sunbloom!", color: SKColor(hex: 0xA86A00), at: CGPoint(x: item.position.x, y: item.position.y + 26), in: world)
             case .ribbon:
                 alina.grantRibbon()
+                ChiptuneEngine.shared.play(.powerUp)
                 GameGraphics.popText("Glow Ribbon!", color: SKColor(hex: 0xC13B73), at: CGPoint(x: item.position.x, y: item.position.y + 26), in: world)
             }
         }
@@ -465,6 +475,7 @@ final class GameScene: SKScene {
     private func checkFallDeath() {
         guard alina.position.y < -48 else { return }
         hits += 1
+        ChiptuneEngine.shared.play(.hurt)
         loseHeart()
         if !finished {
             alina.resetForRespawn(at: checkpoint)
@@ -475,6 +486,7 @@ final class GameScene: SKScene {
     private func updateCheckpoint() {
         guard alina.onGround, alina.position.x > mapWidth * 0.5, checkpoint.x < mapWidth * 0.5 else { return }
         checkpoint = alina.position
+        ChiptuneEngine.shared.play(.checkpoint)
         GameGraphics.popText("Checkpoint", color: SKColor(hex: 0x1F7A50), at: CGPoint(x: alina.position.x, y: alina.position.y + 40), in: builtLevel?.worldNode ?? self)
     }
 

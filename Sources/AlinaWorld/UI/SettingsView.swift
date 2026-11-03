@@ -5,6 +5,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             Tab("Gameplay", systemImage: "gamecontroller") { GameplaySettings() }
+            Tab("Audio", systemImage: "speaker.wave.2") { AudioSettings() }
             Tab("Display", systemImage: "display") { DisplaySettings() }
             Tab("Progress", systemImage: "star") { ProgressSettings() }
         }
@@ -38,6 +39,38 @@ private struct GameplaySettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct AudioSettings: View {
+    @AppStorage(SettingsKey.musicVolume) private var music = 0.6
+    @AppStorage(SettingsKey.effectsVolume) private var effects = 0.8
+
+    var body: some View {
+        Form {
+            Section {
+                volumeRow("Music", value: $music, icon: "music.note")
+                volumeRow("Sound effects", value: $effects, icon: "sparkles")
+                    .onChange(of: effects) { ChiptuneEngine.shared.play(.petal) }
+            } footer: {
+                Text("Original chiptune soundtrack, synthesized live: a theme for the isles and one for each act.")
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func volumeRow(_ title: String, value: Binding<Double>, icon: String) -> some View {
+        LabeledContent {
+            HStack(spacing: 10) {
+                Slider(value: value, in: 0...1)
+                Text(value.wrappedValue, format: .percent.precision(.fractionLength(0)))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, alignment: .trailing)
+            }
+        } label: {
+            Label(title, systemImage: icon)
+        }
     }
 }
 

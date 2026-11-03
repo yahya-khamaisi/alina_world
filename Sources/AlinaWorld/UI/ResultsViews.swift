@@ -9,23 +9,29 @@ struct MissionCompleteView: View {
     @ObservedObject private var nav = MenuNavigationState.shared
     @State private var revealed = 0
 
-    private let progress = GameProgress.shared
     private var mission: Mission? { MissionLoader.mission(id: result.missionID) }
+    private var nextMission: Mission? { MissionLoader.mission(id: result.missionID + 1) }
     private var isFinale: Bool { result.missionID == GameProgress.missionCount }
     private var restoredCrystal: Bool { mission?.objective == .defeatBoss }
+    private var theme: WorldTheme { mission.map { WorldThemes.theme(for: $0.world) } ?? WorldThemes.ordered[0] }
 
     var body: some View {
         ZStack {
-            PixelBackdrop(theme: WorldThemes.ordered.last!)
+            PixelBackdrop(theme: theme, dense: theme.key == "grove")
                 .ignoresSafeArea()
 
-            HStack(alignment: .top, spacing: Space.xl) {
-                resultsCard
-                journeyCard
+            GeometryReader { proxy in
+                let groundTop = proxy.size.height - max(96, proxy.size.height * 0.16)
+                ZStack(alignment: .topLeading) {
+                    PixelImage(sprite: .alinaJump, scale: 7)
+                        .offset(x: proxy.size.width * 0.16, y: groundTop - 170)
+                    PixelImage(sprite: restoredCrystal ? .crystal : .beacon, scale: 7)
+                        .offset(x: proxy.size.width * 0.78, y: groundTop - (restoredCrystal ? 160 : 112))
+                }
             }
-            .padding(.horizontal, Space.xxl)
-            .padding(.top, WindowChrome.titleBarHeight + Space.s)
-            .padding(.bottom, Space.xxl)
+            .ignoresSafeArea()
+
+            resultsCard
 
             MenuKeyboardDriver { handleKeys() }
         }
@@ -40,123 +46,83 @@ struct MissionCompleteView: View {
     }
 
     private var resultsCard: some View {
-        VStack(spacing: 20) {
-            VStack(spacing: 6) {
-                Eyebrow(text: "Mission \(result.missionID) · \(mission?.title ?? "")", color: Palette.mintText)
-                Text(isFinale ? "The Isles Shine Again!" : "Mission Complete!")
-                    .font(.rounded(38, .heavy))
-                    .foregroundStyle(Palette.ink)
-            }
+        VStack(spacing: 22) {
+            Text(isFinale ? "The Isles Shine!" : "Clear!")
+                .font(.rounded(44, .heavy))
+                .foregroundStyle(Palette.ink)
 
-            HStack(alignment: .bottom, spacing: Space.m) {
-                star(0, size: 60)
-                star(1, size: 80)
-                star(2, size: 60)
+            HStack(alignment: .bottom, spacing: 14) {
+                star(0, size: 64)
+                star(1, size: 86)
+                star(2, size: 64)
             }
             .accessibilityElement()
             .accessibilityLabel("\(result.starCount) of 3 stars")
 
-            VStack(spacing: Space.s) {
-                resultRow(mission?.objectiveLabel ?? "Objective", value: "Done", earned: true)
-                resultRow("Time · par \(formatTime(result.parTime))", value: formatTime(result.time) + (result.newBestTime ? "  New best" : ""), earned: result.stars[1])
-                resultRow("Damage taken", value: result.hits == 0 ? "None" : "\(result.hits) hit\(result.hits == 1 ? "" : "s")", earned: result.stars[2])
-            }
-
-            VStack(alignment: .leading, spacing: Space.s) {
-                Eyebrow(text: "Rewards")
-                HStack(spacing: Space.s) {
-                    reward(.petal, "+\(result.petals)", Palette.pinkSoft, Palette.pinkText)
-                    if restoredCrystal {
-                        reward(.crystal, "Crystal restored", Palette.goldSoft, Palette.goldText)
-                    }
-                    reward(nil, "\(progress.totalStars) ★ total", Palette.lavender, Palette.violet)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Spacer(minLength: 0)
-
             HStack(spacing: 10) {
-                Button(action: onNext) {
-                    Text(isFinale ? "Back to the Isles" : "Next Mission").frame(maxWidth: .infinity)
+                StatChip(value: formatTime(result.time),
+                         fill: result.stars[1] ? Palette.mintSoft : Palette.sand,
+                         text: result.stars[1] ? Palette.mintText : Palette.body, height: 52, size: 22) {
+                    Image(systemName: "timer").font(.system(size: 18, weight: .bold))
+                    if result.newBestTime {
+                        Image(systemName: "arrow.up").font(.system(size: 14, weight: .black))
+                    }
                 }
-                .buttonStyle(ChunkyButtonStyle(kind: .primary, height: 56, focused: nav.overlayFocus == 0))
+                .help("Par \(formatTime(result.parTime))")
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Time \(formatTime(result.time))\(result.newBestTime ? ", new best" : "")")
 
-                Button(action: onReplay) { Image(systemName: "arrow.counterclockwise").font(.system(size: 18, weight: .heavy)) }
-                    .buttonStyle(ChunkyButtonStyle(kind: .secondary, height: 56, focused: nav.overlayFocus == 1, fullWidth: false))
+                StatChip(value: "+\(result.petals)", fill: Palette.pinkSoft, text: Palette.pinkText, height: 52, size: 22) {
+                    PixelImage(sprite: .petal, scale: 3)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(result.petals) petals")
+
+                StatChip(value: result.hits == 0 ? "" : "−\(result.hits)",
+                         fill: result.stars[2] ? Palette.goldSoft : Palette.sand,
+                         text: Palette.body, height: 52, size: 22) {
+                    PixelImage(sprite: result.hits == 0 ? .heart : .heartEmpty, scale: 3)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(result.hits == 0 ? "No damage" : "\(result.hits) hits taken")
+
+                if restoredCrystal {
+                    StatChip(fill: Palette.goldSoft, height: 52) {
+                        PixelImage(sprite: .crystal, scale: 3)
+                    }
+                    .accessibilityLabel("Heart Crystal restored")
+                }
+            }
+
+            HStack(spacing: Space.m) {
+                Button(action: onNext) {
+                    HStack(spacing: 12) {
+                        if isFinale {
+                            Image(systemName: "map.fill")
+                        } else {
+                            Text(nextMission?.code ?? "")
+                            Image(systemName: "arrow.right").font(.system(size: 24, weight: .heavy))
+                        }
+                    }
+                }
+                .buttonStyle(TileButtonStyle(kind: .primary, size: 72, focused: nav.overlayFocus == 0))
+                .onHover { if $0 { nav.overlayFocus = 0 } }
+                .accessibilityLabel(isFinale ? "Back to the isles" : "Next mission")
+
+                Button(action: onReplay) { Image(systemName: "arrow.counterclockwise") }
+                    .buttonStyle(TileButtonStyle(kind: .secondary, size: 72, width: 72, focused: nav.overlayFocus == 1))
+                    .onHover { if $0 { nav.overlayFocus = 1 } }
                     .help("Replay")
                     .accessibilityLabel("Replay mission")
-                Button(action: onMap) { Image(systemName: "map.fill").font(.system(size: 18, weight: .heavy)) }
-                    .buttonStyle(ChunkyButtonStyle(kind: .secondary, height: 56, focused: nav.overlayFocus == 2, fullWidth: false))
+                Button(action: onMap) { Image(systemName: "map.fill") }
+                    .buttonStyle(TileButtonStyle(kind: .secondary, size: 72, width: 72, focused: nav.overlayFocus == 2))
+                    .onHover { if $0 { nav.overlayFocus = 2 } }
                     .help("World map")
                     .accessibilityLabel("World map")
             }
         }
-        .frame(width: 460)
-        .frame(maxHeight: .infinity)
-        .card(padding: Space.xxl)
-    }
-
-    private var journeyCard: some View {
-        let theme = mission.map { WorldThemes.theme(for: $0.world) } ?? WorldThemes.ordered[0]
-        let world = mission.map { WorldThemes.index(of: $0.world) } ?? 0
-
-        return VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Journey").font(.rounded(24, .bold)).foregroundStyle(Palette.ink)
-                Spacer()
-                Text("\(Int(progress.completion * 100))% complete").font(.rounded(13, .heavy)).foregroundStyle(Palette.muted)
-            }
-
-            ZStack(alignment: .bottom) {
-                PixelBackdrop(theme: theme, dense: theme.key == "grove", groundHeight: 48, sunPosition: 0.78)
-                    .frame(height: 220)
-                PixelImage(sprite: .alinaJump, scale: 6)
-                    .padding(.bottom, 62)
-            }
-            .frame(height: 220)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-
-            VStack(alignment: .leading, spacing: Space.s) {
-                Eyebrow(text: "Heart Crystals")
-                HStack(spacing: 6) {
-                    ForEach(0..<9, id: \.self) { i in
-                        PixelImage(sprite: .crystal, scale: 3)
-                            .opacity(i < progress.crystalsRestored ? 1 : 0.2)
-                            .saturation(i < progress.crystalsRestored ? 1 : 0)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.sand))
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: Space.s) {
-                Eyebrow(text: "\(theme.name)")
-                ForEach((world * 3 + 1)...(world * 3 + 3), id: \.self) { id in
-                    if let m = MissionLoader.mission(id: id) {
-                        let stars = progress.stars(for: id)
-                        HStack {
-                            Text("\(id) · \(m.title)").font(.rounded(14, .heavy))
-                                .foregroundStyle(progress.isUnlocked(missionID: id) ? Palette.ink : Palette.muted)
-                            Spacer()
-                            HStack(spacing: 2) {
-                                ForEach(0..<3, id: \.self) { i in
-                                    Image(systemName: "star.fill").font(.system(size: 12, weight: .bold))
-                                        .foregroundStyle(stars[i] ? Palette.gold : Color(hex: 0xD9D0C3))
-                                }
-                            }
-                        }
-                        .padding(.horizontal, Space.m)
-                        .padding(.vertical, 10)
-                        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(id == result.missionID ? Palette.pinkSoft : Palette.sand))
-                    }
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .card()
+        .frame(width: 420)
+        .card(padding: Space.xxl, radius: 32)
     }
 
     private func star(_ index: Int, size: CGFloat) -> some View {
@@ -168,30 +134,6 @@ struct MissionCompleteView: View {
             .shadow(color: earned && shown ? Color(hex: 0xD9901A) : .clear, radius: 0, y: 3)
             .scaleEffect(shown ? 1 : 0.4)
             .opacity(shown ? 1 : 0.5)
-    }
-
-    private func resultRow(_ label: String, value: String, earned: Bool) -> some View {
-        HStack {
-            Image(systemName: "star.fill")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(earned ? Palette.gold : Color(hex: 0xD9D0C3))
-            Text(label).font(.rounded(15, .bold)).foregroundStyle(Palette.ink)
-            Spacer()
-            Text(value).font(.rounded(15, .heavy)).foregroundStyle(earned ? Color(hex: 0xA86A00) : Palette.muted)
-        }
-        .padding(.horizontal, Space.l)
-        .padding(.vertical, Space.m)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.sand))
-    }
-
-    private func reward(_ sprite: PixelSprite?, _ text: String, _ fill: Color, _ color: Color) -> some View {
-        HStack(spacing: Space.s) {
-            if let sprite { PixelImage(sprite: sprite, scale: 2) }
-            Text(text).font(.rounded(14, .heavy)).foregroundStyle(color)
-        }
-        .padding(.horizontal, Space.m)
-        .padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(fill))
     }
 
     private func handleKeys() {
@@ -219,6 +161,7 @@ struct DefeatView: View {
     @ObservedObject private var nav = MenuNavigationState.shared
 
     private var mission: Mission? { MissionLoader.mission(id: missionID) }
+    private var timedOut: Bool { reason.localizedCaseInsensitiveContains("light faded") }
 
     var body: some View {
         ZStack {
@@ -226,36 +169,48 @@ struct DefeatView: View {
                 .ignoresSafeArea()
             Palette.ink.opacity(0.25).ignoresSafeArea()
 
-            VStack(spacing: 20) {
+            VStack(spacing: 22) {
                 PixelImage(sprite: .alinaFall, scale: 6)
-                VStack(spacing: 6) {
-                    Text("Not this time").font(.rounded(34, .heavy)).foregroundStyle(Palette.ink)
-                    Text(reason).font(.rounded(15, .medium)).foregroundStyle(Palette.body).multilineTextAlignment(.center)
-                    Text("Mission \(missionID) · \(mission?.title ?? "")").font(.rounded(13, .bold)).foregroundStyle(Palette.muted)
+                Text("Oops!").font(.rounded(40, .heavy)).foregroundStyle(Palette.ink)
+
+                Group {
+                    if timedOut {
+                        StatChip(value: "0:00", fill: Palette.skySoft, text: Palette.skyText, height: 52, size: 22) {
+                            Image(systemName: "timer").font(.system(size: 18, weight: .bold))
+                        }
+                    } else {
+                        StatChip(fill: Palette.pinkSoft, height: 52) {
+                            ForEach(0..<3, id: \.self) { _ in PixelImage(sprite: .heartEmpty, scale: 3) }
+                        }
+                    }
                 }
-                VStack(spacing: 10) {
+                .help(reason)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(reason)
+
+                HStack(spacing: Space.m) {
                     Button(action: onRetry) {
-                        HStack { Image(systemName: "arrow.counterclockwise"); Text("Try Again"); Spacer(); KeyCap(text: "↩", dark: true) }
+                        Image(systemName: "arrow.counterclockwise").font(.system(size: 28, weight: .heavy))
                     }
-                    .buttonStyle(ChunkyButtonStyle(kind: .primary, height: 56, focused: nav.overlayFocus == 0))
+                    .buttonStyle(TileButtonStyle(kind: .primary, size: 72, focused: nav.overlayFocus == 0))
                     .onHover { if $0 { nav.overlayFocus = 0 } }
-                    Button(action: onMap) {
-                        HStack { Image(systemName: "map.fill").foregroundStyle(Palette.violet); Text("World Map") }
-                    }
-                    .buttonStyle(ChunkyButtonStyle(kind: .secondary, height: 50, focused: nav.overlayFocus == 1))
-                    .onHover { if $0 { nav.overlayFocus = 1 } }
+                    .help("Try again (↩)")
+                    .accessibilityLabel("Try again")
+
+                    Button(action: onMap) { Image(systemName: "map.fill") }
+                        .buttonStyle(TileButtonStyle(kind: .secondary, size: 72, width: 72, focused: nav.overlayFocus == 1))
+                        .onHover { if $0 { nav.overlayFocus = 1 } }
+                        .help("World map")
+                        .accessibilityLabel("World map")
                 }
-                Text("Tip: bloom blocks hide a Sunbloom — it shields you from one hit.")
-                    .font(.rounded(12, .semibold))
-                    .foregroundStyle(Palette.muted)
             }
-            .frame(width: 400)
-            .card(padding: Space.xxl)
+            .frame(width: 320)
+            .card(padding: Space.xxl, radius: 32)
 
             MenuKeyboardDriver {
                 let input = InputController.shared
-                if input.consumeUp() { nav.overlayFocus = 0 }
-                if input.consumeDown() { nav.overlayFocus = 1 }
+                if input.consumeLeft() || input.consumeUp() { nav.overlayFocus = 0 }
+                if input.consumeRight() || input.consumeDown() { nav.overlayFocus = 1 }
                 if input.consumeEnter() { nav.overlayFocus == 0 ? onRetry() : onMap() }
                 if input.consumeEscape() { onMap() }
             }

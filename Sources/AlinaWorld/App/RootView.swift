@@ -71,10 +71,27 @@ struct RootView: View {
             .animation(.easeInOut(duration: 0.25), value: router.routeKey)
         }
         .background(WindowAccessor())
+        .onChange(of: router.routeKey, initial: true) { playMusic(for: router.route) }
         .onAppear {
             InputController.shared.startMonitoring()
             InputController.shared.mode = .menu
             router.applyLaunchRoute(ProcessInfo.processInfo.environment["ALINA_START_ROUTE"])
         }
+    }
+
+    private func playMusic(for route: AppRoute) {
+        let audio = ChiptuneEngine.shared
+        switch route {
+        case .menu, .missionMap, .story:
+            audio.play(Songs.title)
+        case .playing(let id):
+            guard let mission = MissionLoader.mission(id: id) else { return }
+            audio.play(Songs.level(worldIndex: WorldThemes.index(of: mission.world), guardian: mission.objective == .defeatBoss))
+        case .victory:
+            audio.play(Songs.victory)
+        case .defeat:
+            audio.play(Songs.defeat)
+        }
+        audio.setDucked(false)
     }
 }

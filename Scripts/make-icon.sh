@@ -6,10 +6,15 @@ SRC="$ROOT/Sources/AlinaWorld/Resources/AppIcon-1024.png"
 ICONSET="$ROOT/Sources/AlinaWorld/Resources/AppIcon.iconset"
 OUT="$ROOT/Sources/AlinaWorld/Resources/AppIcon.icns"
 
-if [[ ! -f "$SRC" ]]; then
-    echo "Missing $SRC — add a 1024x1024 PNG app icon first."
-    exit 1
-fi
+# Render the icon from the game's pixel sprites so it always matches the in-game art.
+PIXEL="$ROOT/Sources/AlinaWorld/Game/Pixel"
+RENDERER="$ROOT/.build/icon-renderer"
+mkdir -p "$ROOT/.build"
+swiftc -O -swift-version 5 -module-name IconRenderer -o "$RENDERER" \
+    "$PIXEL/PixelArt.swift" "$PIXEL/PixelCatalog.swift" "$ROOT/Sources/AlinaWorld/Game/WorldTheme.swift" \
+    "$ROOT/Scripts/IconRenderer/main.swift"
+"$RENDERER" "$SRC"
+cp "$SRC" "$ROOT/Sources/AlinaWorld/Resources/icon.png"
 
 mkdir -p "$ICONSET"
 sips -z 16 16     "$SRC" --out "$ICONSET/icon_16x16.png" >/dev/null

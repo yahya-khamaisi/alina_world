@@ -54,47 +54,53 @@ struct MissionMapView: View {
             Button(action: onBack) {
                 Image(systemName: "chevron.left").font(.system(size: 17, weight: .heavy))
             }
-            .buttonStyle(IconButtonStyle())
-            .help("Back to menu (Esc)")
+            .buttonStyle(IconButtonStyle(size: 52))
+            .help("Back (Esc)")
             .accessibilityLabel("Back to menu")
-
-            Text("Lumen Isles")
-                .font(.rounded(24, .bold))
-                .foregroundStyle(Palette.ink)
-                .pill(height: 48)
 
             HStack(spacing: Space.xs) {
                 ForEach(0..<3, id: \.self) { index in
-                    let titles = ["Act I · Dawn", "Act II · Dusk", "Act III · Night"]
+                    let acts: [(icon: String, label: String, tint: Color)] = [
+                        ("sunrise.fill", "Act I, dawn", Palette.goldText),
+                        ("sunset.fill", "Act II, dusk", Color(hex: 0xC9601F)),
+                        ("moon.stars.fill", "Act III, night", Palette.violet)
+                    ]
                     let unlocked = progress.isUnlocked(missionID: index * 9 + 1)
-                    Button(titles[index]) {
+                    Button {
                         nav.missionMapIndex = firstPlayableIndex(inAct: index)
+                    } label: {
+                        Image(systemName: unlocked ? acts[index].icon : "lock.fill")
+                            .font(.system(size: 19, weight: .bold))
+                            .foregroundStyle(act == index ? .white : (unlocked ? acts[index].tint : Palette.muted))
+                            .frame(width: 56, height: 44)
+                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(act == index ? Palette.pink : .clear))
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .font(.rounded(14, .heavy))
-                    .foregroundStyle(act == index ? .white : (unlocked ? Palette.ink : Palette.muted))
-                    .padding(.horizontal, Space.l)
-                    .frame(height: 40)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(act == index ? Palette.pink : .clear))
                     .disabled(!unlocked)
+                    .help(acts[index].label)
+                    .accessibilityLabel(acts[index].label + (unlocked ? "" : ", locked"))
                 }
             }
             .padding(Space.xs)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white).shadow(color: Palette.edge, radius: 0, y: 4))
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.white).shadow(color: Palette.edge, radius: 0, y: 4))
 
             Spacer(minLength: 0)
 
             HStack(spacing: Space.s) {
                 PixelImage(sprite: .crystal, scale: 2)
-                Text("\(progress.crystalsRestored) / 9")
+                Text("\(progress.crystalsRestored)/9")
             }
-            .pill(height: 48)
+            .pill(height: 52)
+            .accessibilityLabel("\(progress.crystalsRestored) of 9 Heart Crystals")
             HStack(spacing: Space.s) {
                 Image(systemName: "star.fill").foregroundStyle(Palette.gold)
-                Text("\(progress.totalStars) / 81")
+                Text("\(progress.totalStars)")
             }
-            .pill(height: 48)
+            .pill(height: 52)
+            .accessibilityLabel("\(progress.totalStars) of 81 stars")
         }
+        .font(.rounded(17, .bold))
     }
 
     // MARK: Map
@@ -173,19 +179,20 @@ struct MissionMapView: View {
                 .background(Circle().fill(selected ? Palette.pinkDeep : Palette.ink.opacity(0.2)).offset(y: 5))
                 .overlay(Circle().inset(by: -7).strokeBorder(selected ? Palette.pink : .clear, lineWidth: 4))
 
-                Text(theme.name)
-                    .font(.rounded(12, .heavy))
-                    .foregroundStyle(unlocked ? Palette.ink : Palette.muted)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(.white).shadow(color: Palette.edge, radius: 0, y: 2))
-                    .fixedSize()
-                Text(unlocked ? "★ \(stars)/9" : " ")
-                    .font(.rounded(12, .heavy))
-                    .foregroundStyle(Palette.goldText)
+                HStack(spacing: 3) {
+                    Image(systemName: "star.fill").foregroundStyle(Palette.gold)
+                    Text("\(stars)")
+                }
+                .font(.rounded(12, .heavy))
+                .foregroundStyle(Palette.goldText)
+                .padding(.horizontal, Space.s)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(.white).shadow(color: Palette.edge, radius: 0, y: 2))
+                .opacity(unlocked ? 1 : 0)
             }
         }
         .buttonStyle(.plain)
+        .help(theme.name)
         .accessibilityLabel("World \(world + 1): \(theme.name)\(unlocked ? ", \(stars) of 9 stars" : ", locked")")
     }
 
@@ -196,21 +203,21 @@ struct MissionMapView: View {
         let worldMissions = missions.filter { WorldThemes.index(of: $0.world) == selectedWorld }
 
         return VStack(alignment: .leading, spacing: 18) {
-            PixelBackdrop(theme: theme, dense: theme.key == "grove", groundHeight: 30, sunPosition: 0.72)
-                .frame(width: 312, height: 150)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 6) {
-                Eyebrow(text: "World \(selectedWorld + 1) · Act \(["I", "II", "III"][act])", color: Palette.mintText)
-                Text(theme.name).font(.rounded(26, .bold)).foregroundStyle(Palette.ink)
-                Text(theme.blurb)
-                    .font(.rounded(14, .medium))
-                    .foregroundStyle(Palette.body)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
+            ZStack(alignment: .bottomLeading) {
+                PixelBackdrop(theme: theme, dense: theme.key == "grove", groundHeight: 30, sunPosition: 0.72)
+                    .frame(width: 280, height: 150)
+                Text(theme.name)
+                    .font(.rounded(19, .bold))
+                    .foregroundStyle(Palette.ink)
+                    .padding(.horizontal, Space.m)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white))
+                    .padding(Space.m)
             }
+            .frame(width: 280, height: 150)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-            VStack(spacing: Space.s) {
+            VStack(spacing: 10) {
                 ForEach(worldMissions) { mission in
                     missionRow(mission)
                 }
@@ -221,16 +228,16 @@ struct MissionMapView: View {
             Button {
                 if let mission = selectedMission, progress.isUnlocked(missionID: mission.id) { onSelect(mission) }
             } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "play.fill")
-                    Text(selectedMission.map { "Play Mission \($0.id)" } ?? "Play")
+                HStack(spacing: 12) {
+                    Image(systemName: "play.fill").font(.system(size: 22, weight: .bold))
+                    Text(selectedMission?.code ?? "")
                 }
-                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(ChunkyButtonStyle(kind: .primary, height: 56))
+            .buttonStyle(TileButtonStyle(kind: .primary, size: 64))
             .disabled(!(selectedMission.map { progress.isUnlocked(missionID: $0.id) } ?? false))
+            .accessibilityLabel(selectedMission.map { "Play \($0.code), \($0.title)" } ?? "Play")
         }
-        .frame(width: 312)
+        .frame(width: 280)
         .frame(maxHeight: .infinity, alignment: .top)
         .card()
     }
@@ -248,40 +255,34 @@ struct MissionMapView: View {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(!unlocked ? Color(hex: 0xE4DDD2) : (selected ? Palette.pink : (stars[0] ? Palette.mint : Palette.sky)))
                     if unlocked {
-                        Text("\(mission.id)").font(.rounded(14, .heavy)).foregroundStyle(.white)
+                        Text(mission.code).font(.rounded(15, .heavy)).foregroundStyle(.white)
                     } else {
-                        Image(systemName: "lock.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(Palette.muted)
+                        Image(systemName: "lock.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.muted)
                     }
                 }
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 40)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(mission.title).font(.rounded(14, .heavy)).foregroundStyle(unlocked ? Palette.ink : Palette.muted)
-                    Text(mission.objectiveLabel).font(.rounded(12, .semibold)).foregroundStyle(Palette.muted)
-                }
+                PixelImage(sprite: mission.goalSprite, scale: 2)
+                    .frame(width: 40, height: 40)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white))
+                    .opacity(unlocked ? 1 : 0.45)
+                    .saturation(unlocked ? 1 : 0)
+
                 Spacer(minLength: 0)
-                if stars[0] {
-                    HStack(spacing: 1) {
-                        ForEach(0..<3, id: \.self) { i in
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(stars[i] ? Palette.gold : Color(hex: 0xD9D0C3))
-                        }
-                    }
-                } else if unlocked {
-                    Text("New").font(.rounded(11, .heavy)).foregroundStyle(.white)
-                        .padding(.horizontal, Space.s).padding(.vertical, 3)
-                        .background(Capsule().fill(Palette.pink))
+                if unlocked {
+                    StarsView(stars: stars, size: 15)
                 }
             }
             .padding(.horizontal, Space.m)
-            .padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(selected ? Palette.pinkSoft : Palette.sand))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(selected ? Palette.pink : .clear, lineWidth: 2))
+            .frame(height: 64)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(selected ? Palette.pinkSoft : Palette.sand))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(selected ? Palette.pink : .clear, lineWidth: 3))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!unlocked)
+        .help("\(mission.title) · \(mission.objectiveLabel)")
+        .accessibilityLabel("\(mission.code), \(mission.title), \(mission.objectiveLabel)\(unlocked ? "" : ", locked")")
     }
 
     // MARK: Navigation

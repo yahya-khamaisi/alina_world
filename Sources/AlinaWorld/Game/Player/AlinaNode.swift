@@ -211,6 +211,7 @@ final class AlinaNode: SKNode {
             coyoteTimer = 0
             onGround = false
             setState(.jump)
+            ChiptuneEngine.shared.play(.jump)
         }
 
         if !input.jumpHeld && velocityY > 200 {

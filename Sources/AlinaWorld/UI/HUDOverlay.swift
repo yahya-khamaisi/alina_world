@@ -14,158 +14,149 @@ struct HUDOverlay: View {
                     Spacer()
                     rightCluster
                 }
-                objectiveCard
+                objective
             }
             Spacer()
-            HStack(alignment: .bottom) {
-                if showHint {
-                    hint.transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                Spacer()
+            ZStack(alignment: .bottom) {
                 if mission.objective == .reachFlag {
                     beaconProgress
                 }
+                HStack {
+                    if showHint {
+                        ControlStrip(entries: Array(ControlStrip.gameplay.dropLast()))
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    Spacer()
+                }
             }
         }
-        .padding(Space.xl)
+        .padding(.horizontal, Space.xl)
+        .padding(.vertical, 20)
     }
 
+    /// Hearts, then any power-ups Alina is carrying.
     private var statusCard: some View {
-        HStack(spacing: 14) {
-            PixelImage(sprite: .alinaIdle, scale: 2, overrides: hud.bloom ? ["K": 0xF6C343] : [:])
-                .frame(width: 48, height: 48)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.pinkSoft))
+        HStack(spacing: 6) {
+            HStack(spacing: 5) {
+                ForEach(0..<hud.maxHearts, id: \.self) { i in
+                    PixelImage(sprite: i < hud.hearts ? .heart : .heartEmpty, scale: 4)
+                }
+            }
+            .scaleEffect(hud.hearts == 1 ? 1.08 : 1)
+            .animation(hud.hearts == 1 ? .easeInOut(duration: 0.5).repeatForever(autoreverses: true) : .default, value: hud.hearts)
+            .accessibilityElement()
+            .accessibilityLabel("Hearts \(hud.hearts) of \(hud.maxHearts)")
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 4) {
-                    ForEach(0..<hud.maxHearts, id: \.self) { i in
-                        PixelImage(sprite: i < hud.hearts ? .heart : .heartEmpty, scale: 3)
+            if hud.bloom || hud.ribbon {
+                Rectangle().fill(Palette.line).frame(width: 2, height: 28).padding(.horizontal, 6)
+                if hud.bloom { powerUp(.sunbloom, label: "Sunbloom") }
+                if hud.ribbon { powerUp(.ribbon, label: "Glow Ribbon") }
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 52)
+        .background(hudBackground(radius: 18))
+    }
+
+    private func powerUp(_ sprite: PixelSprite, label: String) -> some View {
+        PixelImage(sprite: sprite, scale: 3)
+            .transition(.scale.combined(with: .opacity))
+            .help(label)
+            .accessibilityLabel("\(label) active")
+    }
+
+    /// Top-center goal: one crystal per shard, guardian pips, or nothing for the beacon run.
+    @ViewBuilder
+    private var objective: some View {
+        switch mission.objective {
+        case .collectN:
+            let target = hud.shardTarget ?? mission.collectRequired
+            HStack(spacing: 8) {
+                ForEach(0..<target, id: \.self) { i in
+                    PixelImage(sprite: .crystal, scale: 3)
+                        .opacity(i < hud.shards ? 1 : 0.3)
+                        .saturation(i < hud.shards ? 1 : 0)
+                        .scaleEffect(i < hud.shards ? 1 : 0.85)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.5), value: hud.shards)
+                }
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 52)
+            .background(hudBackground(radius: 18))
+            .accessibilityElement()
+            .accessibilityLabel("Heart Shards \(hud.shards) of \(target)")
+        case .defeatBoss:
+            HStack(spacing: 10) {
+                PixelImage(sprite: .guardian, scale: 2)
+                HStack(spacing: 6) {
+                    ForEach(0..<3, id: \.self) { i in
+                        Circle()
+                            .fill(i < hud.bossHits ? Palette.pink : Palette.line)
+                            .frame(width: 16, height: 16)
+                            .overlay(Circle().strokeBorder(i < hud.bossHits ? Palette.pinkDeep : Color(hex: 0xD9D0C3), lineWidth: 2))
                     }
                 }
-                .accessibilityElement()
-                .accessibilityLabel("Hearts \(hud.hearts) of \(hud.maxHearts)")
-                Text(hud.hearts == 1 ? "Last heart!" : "Hearts")
-                    .font(.rounded(12, .heavy))
-                    .foregroundStyle(hud.hearts == 1 ? Palette.pinkText : Palette.muted)
             }
-
-            Rectangle().fill(Palette.line).frame(width: 2, height: 36)
-
-            HStack(spacing: Space.s) {
-                powerSlot(.sunbloom, active: hud.bloom, label: "Sunbloom")
-                powerSlot(.ribbon, active: hud.ribbon, label: "Glow Ribbon")
-            }
+            .padding(.horizontal, 16)
+            .frame(height: 52)
+            .background(hudBackground(radius: 18))
+            .accessibilityElement()
+            .accessibilityLabel("Guardian stomped \(hud.bossHits) of 3 times")
+        case .reachFlag:
+            EmptyView()
         }
-        .padding(.vertical, 10)
-        .padding(.leading, 10)
-        .padding(.trailing, Space.l)
-        .background(hudBackground(radius: 18))
-    }
-
-    private func powerSlot(_ sprite: PixelSprite, active: Bool, label: String) -> some View {
-        PixelImage(sprite: sprite, scale: 3)
-            .opacity(active ? 1 : 0.25)
-            .saturation(active ? 1 : 0)
-            .frame(width: 48, height: 48)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(active ? Palette.goldSoft : Palette.sand))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(active ? Palette.gold : .clear, lineWidth: 2))
-            .help(label)
-            .accessibilityLabel("\(label) \(active ? "active" : "not collected")")
-    }
-
-    private var objectiveCard: some View {
-        VStack(alignment: .leading, spacing: Space.s) {
-            HStack(spacing: Space.s) {
-                switch mission.objective {
-                case .collectN:
-                    PixelImage(sprite: .crystal, scale: 2)
-                    Text("Heart Shards").font(.rounded(14, .heavy))
-                    Spacer()
-                    Text("\(hud.shards) / \(hud.shardTarget ?? 0)").font(.rounded(14, .heavy)).foregroundStyle(Color(hex: 0xA86A00))
-                case .defeatBoss:
-                    PixelImage(sprite: .guardian, scale: 1)
-                    Text("Guardian").font(.rounded(14, .heavy))
-                    Spacer()
-                    Text("\(hud.bossHits) / 3 stomps").font(.rounded(14, .heavy)).foregroundStyle(Palette.pinkText)
-                case .reachFlag:
-                    PixelImage(sprite: .beacon, scale: 1)
-                    Text("Reach the beacon").font(.rounded(14, .heavy))
-                    Spacer()
-                    Text("\(Int(hud.progress * 100))%").font(.rounded(14, .heavy)).foregroundStyle(Palette.mintText)
-                }
-            }
-            .foregroundStyle(Palette.ink)
-            .monospacedDigit()
-            ProgressBar(value: hud.progress, tint: mission.objective == .reachFlag ? Palette.mint : Palette.gold, height: 10)
-        }
-        .frame(width: 300)
-        .padding(.horizontal, Space.l)
-        .padding(.vertical, Space.m)
-        .background(hudBackground(radius: 18))
     }
 
     private var rightCluster: some View {
         HStack(spacing: Space.s) {
             HStack(spacing: Space.s) {
-                PixelImage(sprite: .petal, scale: 2)
-                Text(String(format: "%03d", hud.petals))
+                PixelImage(sprite: .petal, scale: 3)
+                Text("\(hud.petals)")
             }
             .modifier(HUDPill())
+            .accessibilityLabel("\(hud.petals) petals")
 
             HStack(spacing: Space.s) {
-                Image(systemName: hud.countdown ? "timer" : "clock").font(.system(size: 15, weight: .bold))
+                Image(systemName: hud.countdown ? "timer" : "clock").font(.system(size: 17, weight: .bold))
                 Text(String(format: "%d:%02d", hud.seconds / 60, hud.seconds % 60))
             }
             .foregroundStyle(hud.countdown && hud.seconds <= 15 ? Palette.pinkText : Palette.ink)
             .modifier(HUDPill())
 
             Button(action: onPause) {
-                Image(systemName: "pause.fill").font(.system(size: 16, weight: .heavy))
+                Image(systemName: "pause.fill").font(.system(size: 18, weight: .heavy))
             }
-            .buttonStyle(IconButtonStyle())
+            .buttonStyle(IconButtonStyle(size: 52))
             .help("Pause (Esc)")
             .accessibilityLabel("Pause")
         }
     }
 
-    private var hint: some View {
-        HStack(spacing: Space.m) {
-            KeyCap(text: "Space", dark: true)
-            Text("Jump").font(.rounded(14, .bold))
-            KeyCap(text: "Shift", dark: true)
-            Text("Sprint").font(.rounded(14, .bold))
-            Text("· Hold jump with the Glow Ribbon to glide").font(.rounded(14, .semibold)).foregroundStyle(Palette.muted)
-        }
-        .foregroundStyle(Palette.ink)
-        .padding(.vertical, 10)
-        .padding(.horizontal, Space.l)
-        .background(hudBackground(radius: 16))
-    }
-
     private var beaconProgress: some View {
-        HStack(spacing: 10) {
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Palette.line)
-                    Capsule().fill(Palette.mint).frame(width: proxy.size.width * hud.progress)
-                    Circle().fill(Palette.pink)
-                        .frame(width: 16, height: 16)
-                        .overlay(Circle().strokeBorder(.white, lineWidth: 3))
-                        .offset(x: proxy.size.width * hud.progress - 8)
-                }
+        GeometryReader { proxy in
+            let x = proxy.size.width * min(1, max(0, hud.progress))
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.75))
+                Capsule().fill(Palette.mint).frame(width: max(12, x))
+                Capsule().fill(Palette.gold).frame(width: 4, height: 20).offset(x: proxy.size.width / 2 - 2)
+                Circle().fill(Palette.pink)
+                    .frame(width: 24, height: 24)
+                    .overlay(Circle().strokeBorder(.white, lineWidth: 4))
+                    .offset(x: x - 12)
+                PixelImage(sprite: .beacon, scale: 2)
+                    .offset(x: proxy.size.width - 2, y: -10)
             }
-            .frame(width: 140, height: 8)
-            PixelImage(sprite: .beacon, scale: 1)
         }
-        .padding(.vertical, Space.m)
-        .padding(.horizontal, Space.l)
-        .background(hudBackground(radius: 16))
+        .frame(width: 480, height: 12)
+        .shadow(color: Palette.ink.opacity(0.12), radius: 0, y: 3)
+        .padding(.bottom, Space.s)
+        .accessibilityElement()
         .accessibilityLabel("\(Int(hud.progress * 100)) percent to the beacon")
     }
 
     private func hudBackground(radius: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .fill(.white.opacity(0.95))
+            .fill(.white.opacity(0.92))
             .shadow(color: Palette.ink.opacity(0.15), radius: 0, y: 4)
     }
 }
@@ -173,14 +164,14 @@ struct HUDOverlay: View {
 private struct HUDPill: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .font(.rounded(17, .heavy))
+            .font(.rounded(21, .bold))
             .monospacedDigit()
             .foregroundStyle(Palette.ink)
             .padding(.horizontal, Space.l)
-            .frame(height: 48)
+            .frame(height: 52)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(.white.opacity(0.95))
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.white.opacity(0.92))
                     .shadow(color: Palette.ink.opacity(0.15), radius: 0, y: 4)
             )
     }
@@ -197,108 +188,83 @@ struct PauseOverlay: View {
     @ObservedObject private var nav = MenuNavigationState.shared
     @Environment(\.openSettings) private var openSettings
 
+    /// Focus 0 is Resume; 1…4 are the icon tiles left to right.
+    private var tiles: [(icon: String, label: String, kind: TileButtonStyle.Kind, action: () -> Void)] {
+        [
+            ("flag.fill", "Restart from checkpoint", .secondary, onCheckpoint),
+            ("arrow.counterclockwise", "Restart mission", .secondary, onRestart),
+            ("gearshape.fill", "Settings", .secondary, { openSettings() }),
+            ("map.fill", "Quit to world map", .danger, onQuit)
+        ]
+    }
+
     var body: some View {
         ZStack {
             Palette.ink.opacity(0.45).ignoresSafeArea()
 
-            HStack(alignment: .center, spacing: Space.xl) {
-                VStack(alignment: .leading, spacing: Space.xl) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Paused").font(.rounded(36, .bold)).foregroundStyle(Palette.ink)
-                            Text("\(mission.id) · \(mission.title)").font(.rounded(14, .bold)).foregroundStyle(Palette.muted)
+            VStack(spacing: 20) {
+                VStack(spacing: Space.xl) {
+                    Text("Paused").font(.rounded(40, .heavy)).foregroundStyle(Palette.ink)
+
+                    HStack(spacing: 10) {
+                        if mission.objective == .collectN {
+                            StatChip(value: "\(hud.shards)/\(hud.shardTarget ?? mission.collectRequired)", fill: Palette.goldSoft, text: Palette.goldText) {
+                                PixelImage(sprite: .crystal, scale: 2)
+                            }
+                        } else {
+                            StatChip(value: "\(Int(hud.progress * 100))%", fill: Palette.mintSoft, text: Palette.mintText) {
+                                PixelImage(sprite: mission.goalSprite, scale: 2)
+                            }
                         }
-                        Spacer()
-                        PixelImage(sprite: .sun, scale: 4)
+                        StatChip(value: "\(hud.petals)", fill: Palette.pinkSoft, text: Palette.pinkText) {
+                            PixelImage(sprite: .petal, scale: 2)
+                        }
+                        StatChip(value: String(format: "%d:%02d", hud.seconds / 60, hud.seconds % 60), fill: Palette.skySoft, text: Palette.skyText) {
+                            Image(systemName: hud.countdown ? "timer" : "clock").font(.system(size: 17, weight: .bold))
+                        }
                     }
 
-                    HStack(spacing: Space.s) {
-                        stat(mission.objective == .collectN ? "Shards" : "Progress",
-                             mission.objective == .collectN ? "\(hud.shards) / \(hud.shardTarget ?? 0)" : "\(Int(hud.progress * 100))%",
-                             Palette.goldSoft, Color(hex: 0xA86A00))
-                        stat("Petals", "\(hud.petals)", Palette.pinkSoft, Palette.pinkText)
-                        stat(hud.countdown ? "Time left" : "Time", String(format: "%d:%02d", hud.seconds / 60, hud.seconds % 60), Palette.skySoft, Palette.skyText)
-                    }
-
-                    VStack(spacing: 10) {
+                    VStack(spacing: Space.m) {
                         Button(action: onResume) {
-                            HStack(spacing: Space.m) {
-                                Image(systemName: "play.fill")
-                                Text("Resume")
-                                Spacer()
-                                KeyCap(text: "Esc", dark: true)
-                            }
+                            Image(systemName: "play.fill").font(.system(size: 30, weight: .bold))
                         }
-                        .buttonStyle(ChunkyButtonStyle(kind: .primary, height: 56, focused: nav.overlayFocus == 0))
+                        .buttonStyle(TileButtonStyle(kind: .primary, size: 72, focused: nav.overlayFocus == 0))
                         .onHover { if $0 { nav.overlayFocus = 0 } }
+                        .help("Resume (Esc)")
+                        .accessibilityLabel("Resume")
 
-                        row(1, "Restart from checkpoint", icon: "arrow.counterclockwise", action: onCheckpoint)
-                        row(2, "Restart mission", icon: "arrow.uturn.backward", action: onRestart)
-                        row(3, "Settings", icon: "gearshape.fill", action: { openSettings() })
-
-                        Button(action: onQuit) {
-                            HStack(spacing: Space.m) {
-                                Image(systemName: "map.fill")
-                                Text("Quit to World Map")
+                        HStack(spacing: Space.m) {
+                            ForEach(Array(tiles.enumerated()), id: \.offset) { index, tile in
+                                Button(action: tile.action) { Image(systemName: tile.icon) }
+                                    .buttonStyle(TileButtonStyle(kind: tile.kind, size: 64, focused: nav.overlayFocus == index + 1))
+                                    .onHover { if $0 { nav.overlayFocus = index + 1 } }
+                                    .help(tile.label)
+                                    .accessibilityLabel(tile.label)
                             }
                         }
-                        .buttonStyle(ChunkyButtonStyle(kind: .quiet, height: 50, focused: nav.overlayFocus == 4))
-                        .onHover { if $0 { nav.overlayFocus = 4 } }
                     }
                 }
-                .frame(width: 400)
-                .card(padding: Space.xxl)
+                .frame(width: 360)
+                .card(padding: Space.xxl, radius: 32)
 
-                VStack(alignment: .leading, spacing: Space.m) {
-                    Text("Controls").font(.rounded(20, .bold)).foregroundStyle(Palette.ink)
-                    ControlsList()
-                    Text("Game controllers are not supported yet — keyboard only.")
-                        .font(.rounded(12, .semibold))
-                        .foregroundStyle(Palette.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(width: 280)
-                .card()
+                ControlStrip()
             }
 
             MenuKeyboardDriver { handleKeys() }
         }
-    }
-
-    private func row(_ index: Int, _ title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: Space.m) {
-                Image(systemName: icon).foregroundStyle(Palette.violet)
-                Text(title)
-            }
-        }
-        .buttonStyle(ChunkyButtonStyle(kind: .secondary, height: 50, focused: nav.overlayFocus == index))
-        .onHover { if $0 { nav.overlayFocus = index } }
-    }
-
-    private func stat(_ label: String, _ value: String, _ fill: Color, _ text: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.rounded(12, .heavy)).foregroundStyle(text)
-            Text(value).font(.rounded(22, .bold)).foregroundStyle(text).monospacedDigit()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Space.m)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(fill))
+        .onAppear { nav.overlayFocus = 0 }
     }
 
     private func handleKeys() {
         let input = InputController.shared
         if input.consumeEscape() { _ = input.consumePause(); onResume(); return }
-        if input.consumeUp() { nav.overlayFocus = max(0, nav.overlayFocus - 1) }
-        if input.consumeDown() { nav.overlayFocus = min(4, nav.overlayFocus + 1) }
+        let focus = nav.overlayFocus
+        if input.consumeUp() { nav.overlayFocus = 0 }
+        if input.consumeDown(), focus == 0 { nav.overlayFocus = 1 }
+        if input.consumeLeft(), focus > 1 { nav.overlayFocus = focus - 1 }
+        if input.consumeRight() { nav.overlayFocus = min(tiles.count, max(1, focus + 1)) }
         if input.consumeEnter() {
-            switch nav.overlayFocus {
-            case 0: onResume()
-            case 1: onCheckpoint()
-            case 2: onRestart()
-            case 3: openSettings()
-            default: onQuit()
-            }
+            if nav.overlayFocus == 0 { onResume() } else { tiles[nav.overlayFocus - 1].action() }
         }
         if input.consumeFullscreen() { AppWindowController.toggleFullscreen() }
     }
