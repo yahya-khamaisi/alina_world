@@ -64,7 +64,6 @@ final class GameScene: SKScene {
     private var checkpoint: CGPoint = .zero
 
     private let parallax = ParallaxBackground()
-    private let foreground = ForegroundLayer()
     /// Where the camera follows to; shake is added on top so smoothing never eats it.
     private var cameraBase: CGPoint?
     private var shakeAmount: CGFloat = 0
@@ -130,7 +129,6 @@ final class GameScene: SKScene {
         #if DEBUG
         if RigPreview.enabled { rigPreview.attach(to: cameraNode) }
         #endif
-        foreground.attach(to: self, theme: level.theme, mapWidth: level.map.worldSize().width)
         parallax.attach(
             to: self,
             theme: level.theme,
@@ -168,7 +166,6 @@ final class GameScene: SKScene {
     override func willMove(from view: SKView) {
         InputController.shared.mode = .menu
         parallax.cleanup()
-        foreground.cleanup()
     }
 
     // MARK: Pause
@@ -249,7 +246,6 @@ final class GameScene: SKScene {
         updateCheckpoint()
         updateCamera(delta: dt)
         parallax.update(visible: visibleRect, delta: clamped)
-        foreground.update(visible: visibleRect, delta: clamped)
         #if DEBUG
         rigPreview.update(dt: dt)
         #endif

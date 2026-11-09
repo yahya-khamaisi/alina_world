@@ -7,7 +7,8 @@ Sources/AlinaWorld/Resources/Art/<name>.jpg at twice the size:
 1. Dark-channel dehaze: estimates the milky veil per pixel (strong on distant mountains and the misty
    lower band, absent on close detail) and removes most of it, keeping a little for depth.
 2. Local contrast and a small saturation lift so distant detail reads.
-3. Lanczos 2x upscale and an unsharp mask, so the GPU no longer stretches a small image on Retina screens.
+3. Light denoise (median) to calm the generator's grain, then a Lanczos 2x upscale with no sharpening, so the
+   GPU no longer stretches a small image on Retina screens and edges stay clean (no halos).
 
 Usage: python3 Scripts/enhance-backdrops.py [names...]   (default: every *.png in the source folder)
 """
@@ -58,11 +59,12 @@ def dehaze(img: Image.Image) -> Image.Image:
 
 
 def enhance(path: Path) -> Path:
-    img = dehaze(Image.open(path))
+    src = Image.open(path).convert("RGB").filter(ImageFilter.MedianFilter(3))
+    img = dehaze(src)
     big = img.resize((img.width * SCALE, img.height * SCALE), Image.LANCZOS)
-    big = big.filter(ImageFilter.UnsharpMask(radius=2.2, percent=70, threshold=2))
+    big = big.filter(ImageFilter.GaussianBlur(radius=0.6))
     target = OUT / (path.stem + ".jpg")
-    big.save(target, "JPEG", quality=90, optimize=True, progressive=True, subsampling=0)
+    big.save(target, "JPEG", quality=93, optimize=True, progressive=True, subsampling=0)
     return target
 
 

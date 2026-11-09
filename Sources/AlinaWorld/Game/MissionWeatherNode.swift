@@ -2,10 +2,9 @@ import AppKit
 import SpriteKit
 
 /// A bounded, camera-relative weather simulation which stays active for the entire mission.
-/// Particle lifetimes are finite; clouds recycle instead of eventually scrolling off the level.
+/// Particle lifetimes are finite, so effects never run out over a long level.
 final class MissionWeatherNode {
     private var root: SKNode?
-    private var clouds: [SKSpriteNode] = []
     private var emitters: [(node: SKEmitterNode, rising: Bool)] = []
     private var mist: SKSpriteNode?
     private var sunlight: SKSpriteNode?
@@ -39,15 +38,7 @@ final class MissionWeatherNode {
         sunlight.alpha = weather.sunshine * 0.04
         root.addChild(sunlight); self.sunlight = sunlight
 
-        for index in 0..<6 where weather.kind != .embers {
-            let cloud = SKSpriteNode(texture: EffectTextures.cloud)
-            cloud.color = SKColor(hex: weather.rain > 0 ? 0x7790B0 : 0xF4E7F3)
-            cloud.colorBlendFactor = 0.75
-            cloud.size = CGSize(width: 150 + CGFloat(index % 3) * 55, height: 46 + CGFloat(index % 3) * 11)
-            cloud.alpha = weather.cloudCover * (index.isMultiple(of: 2) ? 0.3 : 0.22)
-            cloud.zPosition = -47 + CGFloat(index % 2)
-            root.addChild(cloud); clouds.append(cloud)
-        }
+        // No drifting cloud overlays: the painted skies already hold their clouds, and soft blobs read as smudges.
         if enabled {
             let mist = SKSpriteNode(texture: EffectTextures.glow)
             mist.color = SKColor(hex: weather.kind == .embers ? 0xFFC192 : 0xDEEBF6)
@@ -98,7 +89,8 @@ final class MissionWeatherNode {
             bolt.glowWidth = 0.001; bolt.zPosition = -33; bolt.alpha = 0
             root.addChild(bolt); self.bolt = bolt
         }
-        if weather.rain == 0 && weather.snow == 0 {
+        // Ambient drift only where it is weather (rising embers); no decorative petals or sparkles.
+        if weather.rain == 0 && weather.snow == 0 && weather.kind == .embers {
             let e = SKEmitterNode()
             let foliage = weather.kind == .breeze || weather.kind == .sunny
             e.particleTexture = foliage ? EffectTextures.leaf : EffectTextures.sparkle
@@ -130,13 +122,6 @@ final class MissionWeatherNode {
         sunlight?.position = CGPoint(x: visible.minX + visible.width * 0.77, y: visible.minY + visible.height * 0.83)
         sunlight?.size = CGSize(width: visible.width * 1.1, height: visible.height * 1.5)
         sunlight?.alpha = weather.sunshine * (0.04 + sin(elapsed * 0.3) * 0.01)
-        for (index, cloud) in clouds.enumerated() {
-            let span = visible.width + cloud.size.width * 2
-            let speed = (3 + weather.wind * 15) * (index.isMultiple(of: 2) ? 1 : 0.65)
-            let origin = CGFloat(index) * span / 5 + CGFloat(abs(weather.seed % 97))
-            let x = (origin + elapsed * speed).truncatingRemainder(dividingBy: span) - cloud.size.width
-            cloud.position = CGPoint(x: visible.minX + x, y: visible.minY + visible.height * (0.64 + CGFloat(index % 3) * 0.13))
-        }
         mist?.position = CGPoint(x: visible.midX + sin(elapsed * 0.12) * 80, y: visible.minY + visible.height * 0.24)
         mist?.size = CGSize(width: visible.width * 1.9, height: visible.height * 0.35)
         for (e, rising) in emitters {
@@ -157,7 +142,7 @@ final class MissionWeatherNode {
     func cleanup() {
         // Particle targets are the scene, so clear them before detaching the emitter hierarchy.
         emitters.forEach { $0.node.resetSimulation() }
-        root?.removeFromParent(); root = nil; clouds.removeAll(); emitters.removeAll()
+        root?.removeFromParent(); root = nil; emitters.removeAll()
         mist = nil; shade = nil; sunlight = nil; vignette = nil; bolt = nil; elapsed = 0; warmedUp = false
     }
 }
