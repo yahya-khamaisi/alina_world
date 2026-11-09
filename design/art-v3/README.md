@@ -20,6 +20,7 @@ All final paintings are saved in `Sources/AlinaWorld/Resources/Art/`:
 | `SceneryIllustrated.png` | Transparent 3-column, 2-row prop sheet |
 | `CreaturesIllustrated.png` | Transparent 3-column, 3-row creature sheet |
 | `CreatureRig.png` | Transparent 4-column, 4-row cut-out creature rig sheet with sixteen parts at a shared scale; bounds in `CreatureRigFrames.json` |
+| `CreatureRig2.png` | Transparent 4-column, 4-row cut-out sheet for eight original creatures, with sixteen body and appendage parts matching CreatureRig; bounds in `CreatureRig2Frames.json` |
 | `LevelObjects.png` | Transparent 4-column, 3-row atlas of twelve illustrated level blocks, hazards, platforms, collectibles and power-ups; bounds in `LevelObjectsFrames.json` |
 
 Frame bounds are `[x, y, width, height]` in source image coordinates, ordered left-to-right, then top-to-bottom. The game crops the source PNGs at runtime and caches textures. Source paintings remain unchanged.

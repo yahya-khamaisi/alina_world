@@ -9,6 +9,9 @@ final class RigPreview {
     private var creatures: [CreatureRig] = []
     private var flipTime: CGFloat = 0
 
+    /// `ALINA_RIG_PREVIEW=2` shows the second creature cast and Alina's punch and kick frames instead.
+    private static var combat: Bool { ProcessInfo.processInfo.environment["ALINA_RIG_PREVIEW"] == "2" }
+
     static var enabled: Bool { !(ProcessInfo.processInfo.environment["ALINA_RIG_PREVIEW"] ?? "").isEmpty }
 
     func attach(to camera: SKNode) {
@@ -17,13 +20,15 @@ final class RigPreview {
         camera.addChild(root)
         let backdrop = SKSpriteNode(color: SKColor(hex: 0xFFF4E6, alpha: 0.92), size: CGSize(width: 2000, height: 520))
         if CreatureRig.isAvailable {
-            let species: [(CreatureRig.Species, CGFloat)] = [
+            let species: [(CreatureRig.Species, CGFloat)] = Self.combat ? [
+                (.bubblefrog, 31), (.barkling, 31), (.cinderbat, 20), (.rockram, 34), (.bogglebug, 20), (.prismite, 31), (.sparkcloud, 25), (.gloomknight, 34)
+            ] : [
                 (.gloomling, 31), (.guardian, 43), (.thornbeetle, 34), (.mothwisp, 20), (.frostpuff, 31), (.shellcrab, 26), (.starwisp, 34)
             ]
             for (i, entry) in species.enumerated() {
                 let rig = CreatureRig(species: entry.0, width: entry.1, floorY: -15)
                 rig.setScale(3)
-                rig.position = CGPoint(x: CGFloat(i - 3) * 130, y: 140)
+                rig.position = CGPoint(x: (CGFloat(i) - CGFloat(species.count - 1) / 2) * 125, y: 140)
                 root.addChild(rig)
                 creatures.append(rig)
             }
@@ -40,7 +45,13 @@ final class RigPreview {
             rig.setScale(4.2)
             rig.position = CGPoint(x: CGFloat(i - 2) * 150 - 80, y: -110)
             root.addChild(rig)
-            rigs.append((rig, AlinaRig.Motion(state: pose.0, velocity: pose.1, onGround: pose.2, bloom: false, flip: nil, dt: 0)))
+            var motion = AlinaRig.Motion(state: pose.0, velocity: pose.1, onGround: pose.2, bloom: false, flip: nil, dt: 0)
+            if Self.combat {
+                // Punch wind-up, punch, kick wind-up, kick, on the last four.
+                let attacks: [(Bool, CGFloat)?] = [nil, nil, (false, 0.1), (false, 0.4), (true, 0.1), (true, 0.4)]
+                if let attack = attacks[i] { motion.attack = (attack.0, attack.1); motion.state = .idle; motion.onGround = true }
+            }
+            rigs.append((rig, motion))
         }
     }
 
@@ -50,7 +61,7 @@ final class RigPreview {
         for (i, entry) in rigs.enumerated() {
             var motion = entry.1
             motion.dt = dt
-            if i == 5 { motion.flip = flipTime }
+            if i == 5 && !Self.combat { motion.flip = flipTime }
             entry.0.update(motion)
         }
     }

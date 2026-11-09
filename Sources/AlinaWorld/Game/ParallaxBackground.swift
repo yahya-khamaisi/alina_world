@@ -31,13 +31,7 @@ final class ParallaxBackground {
             uv.x += water * sin(uv.y * 100.0 - u_phase * 1.7) * 0.0011;
             uv.y += water * sin(uv.x * 110.0 + u_phase * 1.3) * 0.0008;
             vec4 color = texture2D(u_texture, clamp(uv, vec2(0.001), vec2(0.999)));
-            // Dehaze: lift off the painting's milky veil (strongest toward its misty lower band),
-            // then restore contrast and colour so distant detail reads crisply.
-            float veil = 0.07 + 0.08 * (1.0 - smoothstep(0.05, 0.5, v_tex_coord.y));
-            vec3 c = (color.rgb - veil) / (1.0 - veil);
-            float luma = dot(c, vec3(0.299, 0.587, 0.114));
-            c = mix(vec3(luma), c, 1.2);
-            color.rgb = clamp(c, 0.0, 1.0);
+            // The paintings are dehazed and upscaled offline (Scripts/enhance-backdrops.py); sample them untouched.
             float shimmer = pow(max(0.0, sin(uv.x * 190.0 + uv.y * 80.0 - u_phase * 2.2)), 14.0);
             color.rgb += vec3(0.016, 0.019, 0.020) * shimmer * water;
             gl_FragColor = color;

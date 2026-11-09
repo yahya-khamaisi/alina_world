@@ -230,10 +230,16 @@ final class GameScene: SKScene {
             GameGraphics.sparklePuff(at: CGPoint(x: alina.position.x, y: alina.position.y - 18), in: level.worldNode)
         }
         moveAndCollide(delta: clamped)
+        if alina.attackSerial != lastAttackSerial {
+            lastAttackSerial = alina.attackSerial
+            struckThisSwing.removeAll()
+            swoosh(in: level.worldNode)
+        }
 
         for enemy in level.enemies where enemy.alive {
-            enemy.update(delta: clamped)
-            handleEnemyCollision(enemy)
+            enemy.update(delta: clamped, target: alina.position)
+            handleAttack(on: enemy)
+            if enemy.alive { handleEnemyCollision(enemy) }
         }
 
         checkCollectibles()
@@ -461,6 +467,57 @@ final class GameScene: SKScene {
         } else if alina.stompGraceTimer <= 0 {
             takeHit(fromX: enemy.position.x)
         }
+    }
+
+    // MARK: Combat
+
+    private var lastAttackSerial = 0
+    private var struckThisSwing: Set<ObjectIdentifier> = []
+
+    /// A punch or kick that reaches an enemy defeats it (bosses take three), with the same weight as a stomp.
+    private func handleAttack(on enemy: EnemyNode) {
+        guard let box = alina.attackHitbox, !struckThisSwing.contains(ObjectIdentifier(enemy)) else { return }
+        let enemyRect = CGRect(x: enemy.position.x - enemy.size.width / 2, y: enemy.position.y - enemy.size.height / 2,
+                               width: enemy.size.width, height: enemy.size.height)
+        guard box.intersects(enemyRect) else { return }
+        struckThisSwing.insert(ObjectIdentifier(enemy))
+        let kick = alina.attack == .kick
+        let defeated = enemy.strike(fromX: alina.position.x, power: kick ? 1.4 : 1)
+        alina.stompGraceTimer = max(alina.stompGraceTimer, 0.3)
+        ChiptuneEngine.shared.play(.stomp)
+        let world = builtLevel?.worldNode ?? self
+        let point = CGPoint(x: box.midX + (alina.facingRight ? 10 : -10), y: box.midY)
+        GameGraphics.impact(at: point, in: world, size: kick ? 58 : 46)
+        GameGraphics.ring(at: point, in: world, color: .white, size: kick ? 80 : 62)
+        GameGraphics.burst(at: point, in: world, colors: [SKColor(hex: 0xFF8FB8), .white, SKColor(hex: 0xFFE9AB)], count: kick ? 14 : 10)
+        punch(stop: defeated ? 0.08 : 0.05, shake: enemy.enemyKind == .boss ? 7 : (kick ? 4.5 : 3))
+        if defeated {
+            petals += enemy.enemyKind == .boss ? 10 : 2
+            GameGraphics.popText(enemy.enemyKind == .boss ? "+10" : "+2", color: SKColor(hex: 0xC13B73),
+                                 at: CGPoint(x: enemy.position.x, y: enemy.position.y + 24), in: world)
+            if enemy.enemyKind == .boss { bossDefeated = true }
+        }
+    }
+
+    /// A quick bright arc in front of Alina as she swings.
+    private func swoosh(in world: SKNode) {
+        guard let attack = alina.attack else { return }
+        let kick = attack == .kick
+        let radius: CGFloat = kick ? 30 : 24
+        let path = CGMutablePath()
+        path.addArc(center: .zero, radius: radius, startAngle: kick ? -1.3 : -0.5, endAngle: kick ? 0.5 : 0.9, clockwise: false)
+        let arc = SKShapeNode(path: path)
+        arc.strokeColor = SKColor(hex: kick ? 0xFFE9AB : 0xFFD3E8)
+        arc.lineWidth = kick ? 7 : 5
+        arc.lineCap = .round
+        arc.glowWidth = 3
+        arc.alpha = 0
+        arc.zPosition = 12
+        arc.xScale = alina.facingRight ? 1 : -1
+        arc.position = CGPoint(x: alina.position.x + (alina.facingRight ? 14 : -14), y: alina.position.y + (kick ? -4 : 4))
+        world.addChild(arc)
+        arc.run(.sequence([.wait(forDuration: kick ? 0.07 : 0.05), .fadeAlpha(to: 0.95, duration: 0.03),
+                           .group([.fadeOut(withDuration: 0.16), .scale(by: 1.25, duration: 0.16)]), .removeFromParent()]))
     }
 
     /// Impact weight: freeze for `stop` seconds and shake the camera by `shake` world units.

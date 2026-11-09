@@ -6,6 +6,20 @@ import SpriteKit
 final class CreatureRig: SKNode {
     enum Species {
         case gloomling, guardian, thornbeetle, mothwisp, frostpuff, shellcrab, starwisp
+        // Second cast (`CreatureRig2.png`), one or two per world.
+        case bubblefrog, barkling, cinderbat, rockram, bogglebug, prismite, sparkcloud, gloomknight
+
+        /// Walks on two feet like a Gloomling.
+        var isBiped: Bool { [.gloomling, .guardian, .frostpuff, .bubblefrog, .barkling, .rockram, .prismite, .gloomknight].contains(self) }
+        /// Flies on two wings like a Mothwisp.
+        var isWinged: Bool { [.mothwisp, .cinderbat, .bogglebug, .sparkcloud].contains(self) }
+        var isSecondCast: Bool { [.bubblefrog, .barkling, .cinderbat, .rockram, .bogglebug, .prismite, .sparkcloud, .gloomknight].contains(self) }
+    }
+
+    /// Parts of the second cast sheet, in grid order.
+    private enum Part2: Int, CaseIterable {
+        case frogBody, frogFoot, barkBody, barkFoot, batBody, batWing, ramBody, ramLeg
+        case bugBody, bugWing, prismBody, prismFoot, cloudBody, cloudWing, knightBody, knightFoot
     }
 
     private enum Part: Int, CaseIterable {
@@ -32,7 +46,45 @@ final class CreatureRig: SKNode {
         return result
     }()
 
+    private static let textures2: [Part2: SKTexture] = {
+        guard let url = Bundle.module.url(forResource: "CreatureRig2Frames", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let frames = try? JSONDecoder().decode([[Int]].self, from: data),
+              frames.count == Part2.allCases.count,
+              let sheet = StorybookArt.image(.creatureRig2) else { return [:] }
+        var result: [Part2: SKTexture] = [:]
+        for part in Part2.allCases {
+            let b = frames[part.rawValue]
+            guard b.count == 4, let crop = sheet.cropping(to: CGRect(x: b[0], y: b[1], width: b[2], height: b[3])) else { return [:] }
+            let texture = SKTexture(cgImage: crop)
+            texture.filteringMode = .linear
+            result[part] = texture
+        }
+        return result
+    }()
+
     static var isAvailable: Bool { textures.count == Part.allCases.count }
+
+    /// Whether this species has its own painted parts (the second cast needs `CreatureRig2.png`).
+    static func hasArt(_ species: Species) -> Bool {
+        species.isSecondCast ? textures2.count == Part2.allCases.count : isAvailable
+    }
+
+    /// Body and limb textures for a second-cast species.
+    private static func secondCast(_ species: Species) -> (body: SKTexture?, limb: SKTexture?) {
+        let t = textures2
+        switch species {
+        case .bubblefrog: return (t[.frogBody], t[.frogFoot])
+        case .barkling: return (t[.barkBody], t[.barkFoot])
+        case .cinderbat: return (t[.batBody], t[.batWing])
+        case .rockram: return (t[.ramBody], t[.ramLeg])
+        case .bogglebug: return (t[.bugBody], t[.bugWing])
+        case .prismite: return (t[.prismBody], t[.prismFoot])
+        case .sparkcloud: return (t[.cloudBody], t[.cloudWing])
+        case .gloomknight: return (t[.knightBody], t[.knightFoot])
+        default: return (nil, nil)
+        }
+    }
 
     // MARK: Nodes
 
@@ -59,17 +111,17 @@ final class CreatureRig: SKNode {
         let t = Self.textures
         func sprite(_ part: Part) -> SKSpriteNode { SKSpriteNode(texture: t[part]) }
 
-        let bodyPart: Part
+        let cast2 = Self.secondCast(species)
         switch species {
-        case .gloomling: bodyPart = .gloomBody
-        case .guardian: bodyPart = .guardianBody
-        case .thornbeetle: bodyPart = .beetleShell
-        case .mothwisp: bodyPart = .mothBody
-        case .frostpuff: bodyPart = .frostBody
-        case .shellcrab: bodyPart = .crabBody
-        case .starwisp: bodyPart = .star
+        case .gloomling: body = sprite(.gloomBody)
+        case .guardian: body = sprite(.guardianBody)
+        case .thornbeetle: body = sprite(.beetleShell)
+        case .mothwisp: body = sprite(.mothBody)
+        case .frostpuff: body = sprite(.frostBody)
+        case .shellcrab: body = sprite(.crabBody)
+        case .starwisp: body = sprite(.star)
+        default: body = SKSpriteNode(texture: cast2.body)
         }
-        body = sprite(bodyPart)
         super.init()
 
         let s = width / max(1, body.size.width)
@@ -88,11 +140,11 @@ final class CreatureRig: SKNode {
         }
 
         switch species {
-        case .gloomling, .guardian, .frostpuff:
+        case _ where species.isBiped:
             // Fuzzy blob on two stubby feet.
-            let footPart: Part = species == .frostpuff ? .frostFoot : .gloomFoot
+            let footTexture = cast2.limb ?? t[species == .frostpuff ? .frostFoot : .gloomFoot]
             for (i, x) in [-0.2, 0.22].enumerated() {
-                let foot = sprite(footPart)
+                let foot = SKSpriteNode(texture: footTexture)
                 fit(foot)
                 if species == .guardian { foot.size = CGSize(width: foot.size.width * 1.3, height: foot.size.height * 1.3) }
                 foot.anchorPoint = CGPoint(x: 0.5, y: 0.1)
@@ -130,12 +182,14 @@ final class CreatureRig: SKNode {
                 addChild(node)
                 limbs.append(node)
             }
-        case .mothwisp:
-            // Fuzzy body between two wings hinged at their roots.
+        case _ where species.isWinged:
+            // Fuzzy body between two wings hinged at their roots. Moth wings are painted root-left,
+            // the second cast's root-right, so those are mirrored to match.
             body.anchorPoint = CGPoint(x: 0.5, y: 0.5)
             for i in 0..<2 {
-                let wing = sprite(.mothWing)
+                let wing = SKSpriteNode(texture: cast2.limb ?? t[.mothWing])
                 fit(wing)
+                if cast2.limb != nil { wing.xScale = -1 }
                 wing.anchorPoint = CGPoint(x: 0.04, y: 0.45)
                 wing.position = CGPoint(x: 0.08 * w, y: 0.05 * h)
                 wing.zPosition = i == 0 ? 3 : 1
@@ -177,6 +231,8 @@ final class CreatureRig: SKNode {
             glow.zPosition = 0
             addChild(glow)
             self.glow = glow
+        default:
+            break
         }
         body.position = bodyRest
         limbRest = limbs.map(\.position)
@@ -217,7 +273,7 @@ final class CreatureRig: SKNode {
         var squashY = 1 - flinch * 0.3
 
         switch species {
-        case .gloomling, .guardian, .frostpuff:
+        case _ where species.isBiped:
             // Waddle: feet lift in turn, the body bobs, squashes on each step and rocks side to side.
             for (i, foot) in limbs.enumerated() {
                 let q = p + CGFloat(i) * .pi
@@ -244,7 +300,7 @@ final class CreatureRig: SKNode {
             }
             body.position = CGPoint(x: bodyRest.x, y: bodyRest.y + abs(sin(p * 1.6)) * body.size.height * 0.04)
             body.zRotation = sin(p * 1.6) * 0.03
-        case .mothwisp:
+        case _ where species.isWinged:
             // Wing beats: hinge and fore-shorten, body bobs between strokes.
             let beat = sin(time * 15)
             for (i, wing) in limbs.enumerated() {
@@ -271,11 +327,21 @@ final class CreatureRig: SKNode {
             body.zRotation = sin(time * 1.4) * 0.35
             body.setScale(1 + sin(time * 4) * 0.04)
             glow?.alpha = 0.45 + 0.2 * sin(time * 3)
+        default:
+            break
         }
 
         if species != .starwisp {
             body.yScale = squashY
             body.xScale = 1 / sqrt(max(0.5, squashY))
+        }
+    }
+
+    /// Recolours the whole puppet; used to dress a stand-in until a species' own art is bundled.
+    func tint(_ color: SKColor, amount: CGFloat) {
+        for node in [body] + limbs {
+            node.color = color
+            node.colorBlendFactor = max(node.colorBlendFactor, amount)
         }
     }
 

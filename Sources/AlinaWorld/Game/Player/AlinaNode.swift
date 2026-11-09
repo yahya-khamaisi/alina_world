@@ -14,6 +14,15 @@ enum PlayerState {
 }
 
 final class AlinaNode: SKNode {
+    enum Attack { case punch, kick }
+
+    /// The attack in progress, if any, and how far through it Alina is (0…1).
+    private(set) var attack: Attack?
+    private(set) var attackProgress: CGFloat = 0
+    /// Bumps on every new attack, so the scene can let each swing hit an enemy only once.
+    private(set) var attackSerial = 0
+    private var attackCooldown: CGFloat = 0
+
     var velocityX: CGFloat = 0
     var velocityY: CGFloat = 0
     var onGround = false
@@ -221,9 +230,13 @@ final class AlinaNode: SKNode {
         let jumpVelocity: CGFloat = input.sprint ? 720 : 640
         let gravity = GameConstants.gravity
 
-        let movingLeft = input.left && !input.right
-        let movingRight = input.right && !input.left
-        let noHorizontalInput = !input.left && !input.right
+        // Auto-run: Alina keeps running right on her own unless the player brakes (or chose manual steering).
+        let manual = UserDefaults.standard.bool(forKey: SettingsKey.manualRun)
+        let recovering = hurtCooldown > 0.85
+        let movingLeft = manual && input.left && !input.right
+        let movingRight = manual ? (input.right && !input.left) : (!input.brake && !recovering)
+        let noHorizontalInput = !movingLeft && !movingRight
+        updateAttack(input: input, dt: dt)
 
         if movingLeft {
             velocityX -= accel * dt
@@ -310,6 +323,35 @@ final class AlinaNode: SKNode {
         updateAnimation(dt: dt)
 
         visualRoot.xScale = facingRight ? 1 : -1
+    }
+
+    // MARK: Combat
+
+    private static func duration(_ attack: Attack) -> CGFloat { attack == .punch ? 0.26 : 0.36 }
+
+    private func updateAttack(input: InputController, dt: CGFloat) {
+        let punch = input.consumePunch(), kick = input.consumeKick()
+        if attackCooldown > 0 { attackCooldown -= dt }
+        if let current = attack {
+            attackProgress += dt / Self.duration(current)
+            if attackProgress >= 1 { attack = nil; attackProgress = 0 }
+        }
+        guard attack == nil, attackCooldown <= 0, hurtCooldown < 0.9, punch || kick else { return }
+        attack = kick ? .kick : .punch
+        attackProgress = 0
+        attackSerial += 1
+        attackCooldown = 0.06
+        ChiptuneEngine.shared.play(kick ? .doubleJump : .jump)
+    }
+
+    /// The fist or boot during the strike frames, in world coordinates; nil outside them.
+    var attackHitbox: CGRect? {
+        guard let attack, attackProgress > 0.22, attackProgress < 0.7 else { return nil }
+        let reach: CGFloat = attack == .punch ? 34 : 42
+        let height: CGFloat = attack == .punch ? 22 : 26
+        let y = position.y + (attack == .punch ? 4 : -6)
+        let x = facingRight ? position.x + 4 : position.x - 4 - reach
+        return CGRect(x: x, y: y - height / 2, width: reach, height: height)
     }
 
     private func updateStateMachine(movingLeft: Bool, movingRight: Bool, wasSkidding: Bool, gliding: Bool, input: InputController) {
@@ -420,6 +462,7 @@ final class AlinaNode: SKNode {
                 onGround: onGround,
                 bloom: bloom,
                 flip: doubleJumpTimer > 0 ? 1 - doubleJumpTimer / Self.doubleJumpDuration : nil,
+                attack: attack.map { ($0 == .kick, attackProgress) },
                 dt: dt
             ))
         }

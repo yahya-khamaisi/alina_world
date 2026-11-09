@@ -28,6 +28,7 @@ enum StorybookArt {
         case levelObjects = "LevelObjects"
         case alinaRig = "AlinaRig"
         case creatureRig = "CreatureRig"
+        case creatureRig2 = "CreatureRig2"
         case terrainEdges = "TerrainEdges"
 
         static func environment(for key: String) -> Plate {
@@ -52,7 +53,9 @@ enum StorybookArt {
 
     static func image(_ plate: Plate) -> CGImage? {
         if let image = images[plate] { return image }
-        guard let url = Bundle.module.url(forResource: plate.rawValue, withExtension: "png"),
+        // World backdrops ship as large JPEGs (opaque, dehazed and upscaled); everything else is transparent PNG.
+        guard let url = Bundle.module.url(forResource: plate.rawValue, withExtension: "png")
+                ?? Bundle.module.url(forResource: plate.rawValue, withExtension: "jpg"),
               let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
         images[plate] = image

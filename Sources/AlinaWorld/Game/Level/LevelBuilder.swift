@@ -75,7 +75,7 @@ final class LevelBuilder {
                 case .enemy:
                     crawlerCount += 1
                     let spiky = spikyEnabled && crawlerCount % 3 == 0
-                    let enemy = EnemyNode(kind: spiky ? .spiky : .crawler, theme: theme)
+                    let enemy = EnemyNode(kind: spiky ? .spiky : .crawler, theme: theme, variant: crawlerCount)
                     enemy.configure(onTileWithCenter: center)
                     worldNode.addChild(enemy)
                     enemies.append(enemy)
@@ -125,7 +125,8 @@ final class LevelBuilder {
             case "spiky": kind = .spiky
             default: kind = .crawler
             }
-            let enemy = EnemyNode(kind: kind, theme: theme, patrol: placement.patrol ?? 80)
+            crawlerCount += 1
+            let enemy = EnemyNode(kind: kind, theme: theme, patrol: placement.patrol ?? 80, variant: crawlerCount)
             enemy.configure(onTileWithCenter: CGPoint(x: rect.midX, y: rect.midY))
             worldNode.addChild(enemy)
             enemies.append(enemy)
