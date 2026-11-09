@@ -13,6 +13,7 @@ let package = Package(
             path: "Sources/AlinaWorld",
             resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v5)]
-        )
+        ),
+        .testTarget(name: "AlinaWorldTests", dependencies: ["AlinaWorld"])
     ]
 )

@@ -44,8 +44,15 @@ struct TileButtonStyle: ButtonStyle {
             .foregroundStyle(colors.fg)
             .frame(width: width, height: size)
             .frame(maxWidth: width == nil ? .infinity : nil)
-            .background(shape.fill(colors.fill))
-            .overlay(shape.inset(by: -4).strokeBorder(focused ? Palette.ink.opacity(0.85) : .clear, lineWidth: 3))
+            .background(
+                ZStack {
+                    shape.fill(colors.fill)
+                    shape.inset(by: 6).stroke(.white.opacity(0.6), lineWidth: 2)
+                        .mask(LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .center))
+                    shape.inset(by: 1.5).stroke(Palette.plum, lineWidth: 3)
+                }
+            )
+            .overlay(shape.inset(by: -6).strokeBorder(focused ? Color(hex: 0xF6C343) : .clear, lineWidth: 4))
             .background(shape.fill(colors.edge).offset(y: pressed ? 1 : edgeHeight))
             .offset(y: pressed ? edgeHeight - 1 : 0)
             .padding(.bottom, edgeHeight)
@@ -55,10 +62,10 @@ struct TileButtonStyle: ButtonStyle {
 
     private var colors: (fill: Color, edge: Color, fg: Color) {
         switch kind {
-        case .primary: return (Palette.pink, Palette.pinkDeep, .white)
-        case .secondary: return (Palette.lavender, Palette.lavenderEdge, Palette.violet)
-        case .danger: return (Palette.pinkSoft, Color(hex: 0xF5C6D9), Palette.pinkText)
-        case .white: return (.white, Palette.edge, Palette.ink)
+        case .primary: return (Color(hex: 0xF0619D), Palette.plum, .white)
+        case .secondary: return (Palette.parchment, Palette.plum, Palette.violet)
+        case .danger: return (Palette.pinkSoft, Palette.plum, Palette.pinkText)
+        case .white: return (Palette.parchment, Palette.plum, Palette.ink)
         }
     }
 }

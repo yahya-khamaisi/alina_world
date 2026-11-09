@@ -6,306 +6,287 @@ struct MissionMapView: View {
     let onBack: () -> Void
 
     @ObservedObject private var nav = MenuNavigationState.shared
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @AppStorage(SettingsKey.reduceMotion) private var reduceMotion = false
     private let progress = GameProgress.shared
 
-    private var selectedWorld: Int { nav.missionMapIndex / 3 }
+    private var selectedWorld: Int { max(0, min(GameProgress.worldCount - 1, nav.missionMapIndex / 3)) }
     private var selectedMission: Mission? { missions.first { $0.id == nav.missionMapIndex + 1 } }
     private var act: Int { selectedWorld / 3 }
+    private var motion: Animation? { reduceMotion || accessibilityReduceMotion ? nil : .spring(duration: 0.35) }
 
     var body: some View {
-        ZStack {
-            PixelBackdrop(theme: WorldThemes.ordered[0])
-                .ignoresSafeArea()
-
-            VStack(spacing: 20) {
-                header
-                HStack(alignment: .top, spacing: Space.xl) {
-                    map
-                    sidePanel
+        GeometryReader { proxy in
+            ZStack {
+                map(size: proxy.size)
+                VStack(spacing: 0) {
+                    header
+                    Spacer(minLength: 0)
+                    selectionPanel
                 }
+                .padding(.horizontal, Space.xl)
+                .padding(.top, WindowChrome.titleBarHeight + Space.m)
+                .padding(.bottom, Space.l)
             }
-            .padding(.horizontal, Space.xxl)
-            .padding(.top, WindowChrome.titleBarHeight + Space.s)
-            .padding(.bottom, Space.xxl)
-
-            MenuKeyboardDriver { handleKeys() }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
+        .ignoresSafeArea()
+        .overlay { MenuKeyboardDriver { handleKeys() } }
         .onAppear { nav.resetMissionMapSelection() }
     }
-
-    // MARK: Header
 
     private var header: some View {
         HStack(spacing: Space.m) {
             Button(action: onBack) {
-                Image(systemName: "chevron.left").font(.system(size: 17, weight: .heavy))
+                Image(systemName: "chevron.left").font(.system(size: 20, weight: .heavy))
+                    .foregroundStyle(Palette.plum)
             }
-            .buttonStyle(IconButtonStyle(size: 52))
+            .buttonStyle(StorybookButtonStyle(width: 50, height: 50, round: true))
             .help("Back (Esc)")
             .accessibilityLabel("Back to menu")
 
-            HStack(spacing: Space.xs) {
-                ForEach(0..<4, id: \.self) { index in
-                    let acts: [(icon: String, label: String, tint: Color)] = [
-                        ("sunrise.fill", "Act I, dawn", Palette.goldText),
-                        ("sunset.fill", "Act II, dusk", Color(hex: 0xC9601F)),
-                        ("moon.stars.fill", "Act III, night", Palette.violet),
-                        ("sparkles", "Act IV, beyond the isles", Palette.sky)
-                    ]
-                    let unlocked = progress.isUnlocked(missionID: index * 9 + 1)
-                    Button {
-                        nav.missionMapIndex = firstPlayableIndex(inAct: index)
-                    } label: {
-                        Image(systemName: unlocked ? acts[index].icon : "lock.fill")
-                            .font(.system(size: 19, weight: .bold))
-                            .foregroundStyle(act == index ? .white : (unlocked ? acts[index].tint : Palette.muted))
-                            .frame(width: 56, height: 44)
-                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(act == index ? Palette.pink : .clear))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!unlocked)
-                    .help(acts[index].label)
-                    .accessibilityLabel(acts[index].label + (unlocked ? "" : ", locked"))
-                }
+            HStack(spacing: 10) {
+                PixelImage(sprite: .flower, scale: 3)
+                Text("World Map").font(.rounded(28, .black))
             }
-            .padding(Space.xs)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.white).shadow(color: Palette.edge, radius: 0, y: 4))
+            .foregroundStyle(Palette.plum)
+            .storybookPill(height: 58, horizontal: 20)
 
             Spacer(minLength: 0)
 
-            HStack(spacing: Space.s) {
+            HStack(spacing: 4) {
+                ForEach(0..<4, id: \.self) { index in
+                    let icons = ["sunrise.fill", "sunset.fill", "moon.stars.fill", "sparkles"]
+                    Button { selectWorld(index * 3) } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: icons[index])
+                            Text(["I", "II", "III", "IV"][index])
+                        }
+                        .font(.rounded(14, .heavy))
+                        .foregroundStyle(act == index ? .white : Palette.plum)
+                        .frame(width: 68, height: 38)
+                        .background(Capsule().fill(act == index ? Palette.pink : .clear))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Explore Act \(index + 1)")
+                    .accessibilityLabel("Act \(index + 1)\(act == index ? ", selected" : "")")
+                }
+            }
+            .storybookPill(height: 50, horizontal: 8)
+
+            HStack(spacing: 8) {
                 PixelImage(sprite: .crystal, scale: 2)
                 Text("\(progress.crystalsRestored)/\(GameProgress.worldCount)")
             }
-            .pill(height: 52)
+            .storybookPill(height: 50, horizontal: 14)
             .accessibilityLabel("\(progress.crystalsRestored) of \(GameProgress.worldCount) Heart Crystals")
-            HStack(spacing: Space.s) {
-                Image(systemName: "star.fill").foregroundStyle(Palette.gold)
+
+            HStack(spacing: 6) {
+                Image(systemName: "star.fill").foregroundStyle(Palette.goldText)
                 Text("\(progress.totalStars)")
             }
-            .pill(height: 52)
+            .storybookPill(height: 50, horizontal: 12)
             .accessibilityLabel("\(progress.totalStars) of \(GameProgress.missionCount * 3) stars")
+
+            CompassRose().accessibilityHidden(true)
         }
-        .font(.rounded(17, .bold))
+        .font(.rounded(17, .heavy))
+        .foregroundStyle(Palette.plum)
     }
 
-    // MARK: Map
+    private func map(size: CGSize) -> some View {
+        let sx = size.width / MapArt.size.width
+        let sy = size.height / MapArt.size.height
+        let unit = min(sx, sy)
+        return ZStack(alignment: .topLeading) {
+            Image(decorative: MapArt.backdrop, scale: 1)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: size.width, height: size.height)
 
-    /// The illustrated isles; each island's landmark shows what the world holds.
-    private var map: some View {
-        let cleared = (0..<GameProgress.worldCount).filter { progress.isCompleted(missionID: $0 * 3 + 3) }.count
-        let unlocked = (0..<GameProgress.worldCount).filter { progress.isUnlocked(missionID: $0 * 3 + 1) }.count
-        return GeometryReader { proxy in
-            let s = min(proxy.size.width / MapArt.size.width, proxy.size.height / MapArt.size.height)
-            ZStack(alignment: .topLeading) {
-                Image(decorative: MapArt.image(cleared: cleared, unlocked: unlocked, current: selectedWorld), scale: 2)
-                    .resizable()
-                    .interpolation(.none)
-                    .frame(width: MapArt.size.width * s, height: MapArt.size.height * s)
-
-                ForEach(0..<GameProgress.worldCount, id: \.self) { world in
-                    let island = MapArt.islands[world]
-                    worldPin(world)
-                        .position(x: island.center.x * s, y: (island.center.y - island.radius.height - 26) * s)
+            Canvas { context, _ in
+                for leg in 0..<(MapArt.islands.count - 1) {
+                    let points = MapArt.trail(leg: leg)
+                    var path = Path()
+                    path.move(to: CGPoint(x: points.0.x * sx, y: points.0.y * sy))
+                    path.addQuadCurve(to: CGPoint(x: points.2.x * sx, y: points.2.y * sy),
+                                      control: CGPoint(x: points.1.x * sx, y: points.1.y * sy))
+                    let cleared = progress.isCompleted(missionID: leg * 3 + 3)
+                    context.stroke(path, with: .color(Palette.plum.opacity(0.8)),
+                                   style: StrokeStyle(lineWidth: 9 * unit, lineCap: .round, dash: [1, 14 * unit]))
+                    context.stroke(path, with: .color(cleared ? Palette.gold : Palette.parchment),
+                                   style: StrokeStyle(lineWidth: 5 * unit, lineCap: .round, dash: [1, 14 * unit]))
                 }
-
-                let current = MapArt.islands[selectedWorld]
-                Text(WorldThemes.ordered[selectedWorld].name)
-                    .font(.rounded(17, .bold))
-                    .foregroundStyle(Palette.ink)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white).shadow(color: Palette.edge, radius: 0, y: 4))
-                    .fixedSize()
-                    .position(x: current.center.x * s, y: (current.center.y + current.radius.height + 34) * s)
-                    .animation(.spring(duration: 0.35), value: selectedWorld)
-                    .allowsHitTesting(false)
-
-                PixelImage(sprite: .alinaIdle, scale: 3)
-                    .position(x: (current.center.x - current.radius.width * 0.62) * s, y: (current.center.y - 26) * s)
-                    .animation(.spring(duration: 0.35), value: selectedWorld)
-                    .allowsHitTesting(false)
             }
-            .frame(width: MapArt.size.width * s, height: MapArt.size.height * s)
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(.white, lineWidth: 6))
-            .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Palette.edge).offset(y: 10))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+
+            ForEach(0..<GameProgress.worldCount, id: \.self) { world in
+                let island = MapArt.islands[world]
+                worldPlaque(world, unit: unit)
+                    .position(x: island.center.x * sx, y: (island.center.y + (world < 4 ? 38 : 46)) * sy)
+            }
+
+            let current = MapArt.islands[selectedWorld]
+            VStack(spacing: -5) {
+                PixelImage(sprite: .alinaIdle, scale: max(1.6, 2.2 * unit))
+                    .padding(7)
+                    .background(Circle().fill(Palette.parchment).overlay(Circle().stroke(Palette.plum, lineWidth: 3)))
+                Image(systemName: "triangle.fill")
+                    .font(.system(size: 16 * unit))
+                    .rotationEffect(.degrees(180))
+                    .foregroundStyle(Palette.plum)
+            }
+            .shadow(color: Palette.plum.opacity(0.35), radius: 0, y: 4)
+            .position(x: current.center.x * sx, y: (current.center.y - 78) * sy)
+            .animation(motion, value: selectedWorld)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
     }
 
-    /// World number with its stars, or a lock; tap to jump there.
-    private func worldPin(_ world: Int) -> some View {
-        let theme = WorldThemes.ordered[world]
+    private func worldPlaque(_ world: Int, unit: CGFloat) -> some View {
         let firstID = world * 3 + 1
         let unlocked = progress.isUnlocked(missionID: firstID)
-        let stars = (firstID...firstID + 2).reduce(0) { $0 + progress.starCount(for: $1) }
         let selected = world == selectedWorld
-        let cleared = progress.isCompleted(missionID: firstID + 2)
-
-        return Button {
-            if unlocked { nav.missionMapIndex = firstPlayableIndex(inWorld: world) }
-        } label: {
-            Group {
-                if unlocked {
-                    HStack(spacing: 6) {
-                        Text("\(world + 1)").font(.rounded(17, .heavy))
-                        HStack(spacing: 1) {
-                            ForEach(0..<3, id: \.self) { i in
-                                Image(systemName: "star.fill")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(i < (stars + 2) / 3 ? Palette.gold : .white.opacity(0.45))
-                            }
-                        }
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .frame(height: 32)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(selected ? Palette.pink : (cleared ? Palette.mint : Palette.sky))
-                            .shadow(color: selected ? Palette.pinkDeep : Palette.ink.opacity(0.25), radius: 0, y: 4)
-                    )
-                } else {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Palette.muted)
-                        .frame(width: 32, height: 32)
-                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(0.9)))
-                }
+        let stars = (firstID...firstID + 2).reduce(0) { $0 + progress.starCount(for: $1) }
+        return Button { selectWorld(world) } label: {
+            HStack(spacing: 6) {
+                Text("\(world + 1)")
+                    .font(.rounded(18, .black))
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(selected ? Palette.pinkSoft : Palette.parchmentShade))
+                    .overlay(Circle().stroke(Palette.plum, lineWidth: 2))
+                Text(WorldThemes.ordered[world].name)
+                    .font(.rounded(14, .heavy))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Spacer(minLength: 0)
+                Image(systemName: unlocked ? "star.fill" : "lock.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(unlocked ? Palette.goldText : Palette.plum.opacity(0.7))
             }
-            .scaleEffect(selected ? 1.12 : 1)
+            .foregroundStyle(Palette.plum)
+            .frame(width: 190)
+            .storybookPill(height: 42, horizontal: 8)
+            .overlay(Capsule().inset(by: -4).stroke(selected ? Palette.gold : .clear, lineWidth: 3))
+            .scaleEffect(max(0.78, min(1.15, unit)))
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help(theme.name)
-        .accessibilityLabel("World \(world + 1): \(theme.name)\(unlocked ? ", \(stars) of 9 stars" : ", locked")")
+        .help("\(WorldThemes.ordered[world].name) · \(unlocked ? "\(stars)/9 stars" : "Locked")")
+        .accessibilityLabel("World \(world + 1): \(WorldThemes.ordered[world].name), \(unlocked ? "\(stars) of 9 stars" : "locked")\(selected ? ", selected" : "")")
     }
 
-    // MARK: Side panel
-
-    private var sidePanel: some View {
-        let theme = WorldThemes.ordered[selectedWorld]
-        let worldMissions = missions.filter { WorldThemes.index(of: $0.world) == selectedWorld }
-
-        return VStack(alignment: .leading, spacing: 18) {
-            ZStack(alignment: .bottomLeading) {
-                PixelBackdrop(theme: theme, dense: theme.key == "grove", groundHeight: 30, sunPosition: 0.72)
-                    .frame(width: 280, height: 150)
-                Text(theme.name)
-                    .font(.rounded(19, .bold))
-                    .foregroundStyle(Palette.ink)
-                    .padding(.horizontal, Space.m)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white))
-                    .padding(Space.m)
+    private var selectionPanel: some View {
+        HStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("ACT \(["I", "II", "III", "IV"][act]) · WORLD \(selectedWorld + 1) / 12")
+                    .font(.rounded(10, .heavy)).tracking(1.2)
+                    .foregroundStyle(Palette.pinkText)
+                Text(WorldThemes.ordered[selectedWorld].name)
+                    .font(.rounded(19, .black)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(selectedMission?.title ?? "Choose a mission")
+                    .font(.rounded(12, .semibold)).foregroundStyle(Palette.body).lineLimit(1)
             }
-            .frame(width: 280, height: 150)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(width: 220, alignment: .leading)
 
-            VStack(spacing: 10) {
-                ForEach(worldMissions) { mission in
-                    missionRow(mission)
-                }
-            }
-
+            ForEach(missions.filter { ($0.id - 1) / 3 == selectedWorld }) { mission in missionButton(mission) }
+            Text(canPlay ? "← →  Worlds\n↑ ↓  Missions" : "Complete earlier missions\nto unlock this chapter")
+                .font(.rounded(11, .semibold))
+                .foregroundStyle(Palette.body)
+                .lineSpacing(3)
             Spacer(minLength: 0)
-
             Button {
                 if let mission = selectedMission, progress.isUnlocked(missionID: mission.id) { onSelect(mission) }
             } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "play.fill").font(.system(size: 22, weight: .bold))
-                    Text(selectedMission?.code ?? "")
+                HStack(spacing: 10) {
+                    Image(systemName: canPlay ? "play.fill" : "lock.fill")
+                    Text(canPlay ? "PLAY \(selectedMission?.code ?? "")" : "LOCKED")
                 }
+                .font(.rounded(18, .black))
             }
-            .buttonStyle(TileButtonStyle(kind: .primary, size: 64))
-            .disabled(!(selectedMission.map { progress.isUnlocked(missionID: $0.id) } ?? false))
-            .accessibilityLabel(selectedMission.map { "Play \($0.code), \($0.title)" } ?? "Play")
+            .buttonStyle(StorybookButtonStyle(width: 164, height: 54, focused: canPlay))
+            .disabled(!canPlay)
+            .opacity(canPlay ? 1 : 0.6)
+            .help(canPlay ? "Start mission (Enter)" : "Complete the preceding missions to unlock")
+            .accessibilityLabel(canPlay ? "Play \(selectedMission?.title ?? "mission")" : "Mission locked. Complete preceding missions to unlock.")
         }
-        .frame(width: 280)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .card()
+        .foregroundStyle(Palette.plum)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background {
+            RoundedRectangle(cornerRadius: 24).fill(Palette.parchment)
+                .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Palette.plum, lineWidth: 3))
+                .shadow(color: Palette.plum.opacity(0.35), radius: 0, y: 5)
+        }
     }
 
-    private func missionRow(_ mission: Mission) -> some View {
+    private var canPlay: Bool { selectedMission.map { progress.isUnlocked(missionID: $0.id) } ?? false }
+
+    private func missionButton(_ mission: Mission) -> some View {
         let unlocked = progress.isUnlocked(missionID: mission.id)
         let selected = mission.id == nav.missionMapIndex + 1
-        let stars = progress.stars(for: mission.id)
-
         return Button {
-            if unlocked { nav.missionMapIndex = mission.id - 1 }
+            nav.missionMapIndex = mission.id - 1
+            ChiptuneEngine.shared.play(.select)
         } label: {
-            HStack(spacing: Space.m) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(!unlocked ? Color(hex: 0xE4DDD2) : (selected ? Palette.pink : (stars[0] ? Palette.mint : Palette.sky)))
-                    if unlocked {
-                        Text(mission.code).font(.rounded(15, .heavy)).foregroundStyle(.white)
-                    } else {
-                        Image(systemName: "lock.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.muted)
-                    }
+            VStack(spacing: 5) {
+                HStack(spacing: 6) {
+                    Image(systemName: unlocked ? "flag.fill" : "lock.fill").font(.system(size: 11, weight: .heavy))
+                    Text(mission.code).font(.rounded(15, .black))
                 }
-                .frame(width: 44, height: 40)
-
-                PixelImage(sprite: mission.goalSprite, scale: 2)
-                    .frame(width: 40, height: 40)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white))
-                    .opacity(unlocked ? 1 : 0.45)
-                    .saturation(unlocked ? 1 : 0)
-
-                Spacer(minLength: 0)
-                if unlocked {
-                    StarsView(stars: stars, size: 15)
-                }
+                StarsView(stars: progress.stars(for: mission.id), size: 10)
             }
-            .padding(.horizontal, Space.m)
-            .frame(height: 64)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(selected ? Palette.pinkSoft : Palette.sand))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(selected ? Palette.pink : .clear, lineWidth: 3))
-            .contentShape(Rectangle())
+            .foregroundStyle(selected ? Palette.pinkText : Palette.plum)
+            .frame(width: 74, height: 54)
+            .background(RoundedRectangle(cornerRadius: 14).fill(selected ? Palette.pinkSoft : Palette.parchmentShade.opacity(0.5)))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(selected ? Palette.pink : .clear, lineWidth: 2))
         }
         .buttonStyle(.plain)
-        .disabled(!unlocked)
-        .help("\(mission.title) · \(mission.objectiveLabel)")
-        .accessibilityLabel("\(mission.code), \(mission.title), \(mission.objectiveLabel)\(unlocked ? "" : ", locked")")
+        .help("\(mission.title) · \(mission.objectiveLabel)\(unlocked ? "" : " · Locked")")
+        .accessibilityLabel("\(mission.code), \(mission.title), \(mission.objectiveLabel)\(unlocked ? "" : ", locked")\(selected ? ", selected" : "")")
     }
 
-    // MARK: Navigation
-
-    private func firstPlayableIndex(inWorld world: Int) -> Int {
-        let ids = (world * 3 + 1)...(world * 3 + 3)
+    private func selectWorld(_ world: Int) {
+        let firstID = world * 3 + 1
+        let ids = firstID...(firstID + 2)
         let target = ids.first { progress.isUnlocked(missionID: $0) && !progress.isCompleted(missionID: $0) }
-            ?? ids.last { progress.isUnlocked(missionID: $0) } ?? ids.lowerBound
-        return target - 1
-    }
-
-    private func firstPlayableIndex(inAct act: Int) -> Int {
-        firstPlayableIndex(inWorld: act * 3)
+            ?? ids.last { progress.isUnlocked(missionID: $0) } ?? firstID
+        nav.missionMapIndex = target - 1
+        ChiptuneEngine.shared.play(.select)
     }
 
     private func handleKeys() {
         let input = InputController.shared
         if input.consumeEscape() { onBack(); return }
-        if input.consumeLeft() { moveWorld(-1) }
-        if input.consumeRight() { moveWorld(1) }
-        if input.consumeUp() { moveMission(-1) }
-        if input.consumeDown() { moveMission(1) }
-        if input.consumeEnter(), let mission = selectedMission, progress.isUnlocked(missionID: mission.id) {
-            onSelect(mission)
-        }
+        if input.consumeLeft() { selectWorld(max(0, selectedWorld - 1)) }
+        if input.consumeRight() { selectWorld(min(GameProgress.worldCount - 1, selectedWorld + 1)) }
+        if input.consumeUp() { nav.missionMapIndex = max(selectedWorld * 3, nav.missionMapIndex - 1) }
+        if input.consumeDown() { nav.missionMapIndex = min(selectedWorld * 3 + 2, nav.missionMapIndex + 1) }
+        if input.consumeEnter(), let mission = selectedMission, canPlay { onSelect(mission) }
         if input.consumeFullscreen() { AppWindowController.toggleFullscreen() }
     }
+}
 
-    private func moveWorld(_ delta: Int) {
-        let world = max(0, min(GameProgress.worldCount - 1, selectedWorld + delta))
-        guard progress.isUnlocked(missionID: world * 3 + 1) else { return }
-        nav.missionMapIndex = firstPlayableIndex(inWorld: world)
-    }
-
-    private func moveMission(_ delta: Int) {
-        let next = max(0, min(missions.count - 1, nav.missionMapIndex + delta))
-        if progress.isUnlocked(missionID: next + 1) { nav.missionMapIndex = next }
+private struct CompassRose: View {
+    var body: some View {
+        ZStack {
+            Circle().fill(LinearGradient(colors: [Palette.parchment, Palette.parchmentShade], startPoint: .top, endPoint: .bottom))
+                .overlay(Circle().strokeBorder(Palette.plum, lineWidth: 2))
+            ForEach(0..<4, id: \.self) { index in
+                Image(systemName: "triangle.fill")
+                    .font(.system(size: 17, weight: .black))
+                    .foregroundStyle(index == 0 ? Palette.pink : Palette.goldText)
+                    .offset(y: -8)
+                    .rotationEffect(.degrees(Double(index) * 90))
+            }
+            Circle().fill(Palette.parchment).frame(width: 6, height: 6)
+            Text("N").font(.rounded(8, .black)).foregroundStyle(Palette.plum).offset(y: -20)
+        }
+        .frame(width: 54, height: 54)
+        .shadow(color: Palette.plum.opacity(0.3), radius: 0, y: 3)
     }
 }
 

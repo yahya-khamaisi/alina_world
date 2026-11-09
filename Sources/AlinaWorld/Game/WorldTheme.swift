@@ -7,7 +7,7 @@ enum GameConstants {
     static let playerHeight: CGFloat = 28
     static let stompBounceVelocity: CGFloat = 520
     /// World units visible vertically; the camera scales so every window size frames the level the same way.
-    static let viewHeight: CGFloat = 560
+    static let viewHeight: CGFloat = 420
     /// Integer upscale applied to 16 px tile art so it fills a 32 pt tile.
     static let tilePixel: CGFloat = 2
 }
@@ -39,7 +39,7 @@ struct WorldTheme {
     var spritePalette: [Character: UInt32] {
         [
             "i": grass.0, "g": grass.1, "x": grass.2,
-            "u": dirt.0, "s": dirt.1,
+            "u": dirt.0, "s": dirt.1, "y": PixelCanvas.mix(dirt.0, 0xFFD9B0, 0.4), "X": PixelCanvas.mix(grass.2, 0x2B1A30, 0.35),
             "v": leaves.0, "V": leaves.1,
             "k": hills.0, "b": hills.1, "j": hills.2
         ]
@@ -54,8 +54,8 @@ enum WorldThemes {
             key: "meadow", name: "Sunpetal Meadow",
             blurb: "Rolling hills and warm wind. Learn to run, jump and stomp before the Night Crown notices.",
             sky: [0x6EC1F2, 0x86CCF4, 0x9FD7F6, 0xB9E2F8, 0xD4EEFA],
-            grass: (0xA6E37E, 0x76CF63, 0x3E9147), dirt: (0xD9A86C, 0xA98563),
-            leaves: (0x55B85C, 0x2F8A45), hills: (0xBDE6D2, 0x9CD4BD, 0x86C2AA), particles: .petals
+            grass: (0xD6EC6C, 0x9FD24E, 0x5E9E3C), dirt: (0xC97B4E, 0x9C5238),
+            leaves: (0x5DB458, 0x2F8A45), hills: (0xBDE6D2, 0x9CD4BD, 0x86C2AA), particles: .petals
         ),
         WorldTheme(
             key: "brook", name: "Glimmer Brook",

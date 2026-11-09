@@ -10,7 +10,10 @@ struct HUDOverlay: View {
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
                 HStack(alignment: .top) {
-                    statusCard
+                    VStack(alignment: .leading, spacing: 8) {
+                        statusCard
+                        WeatherBadge(weather: mission.weather)
+                    }
                     Spacer()
                     rightCluster
                 }
@@ -40,22 +43,33 @@ struct HUDOverlay: View {
             HStack(spacing: 5) {
                 ForEach(0..<hud.maxHearts, id: \.self) { i in
                     PixelImage(sprite: i < hud.hearts ? .heart : .heartEmpty, scale: 4)
+                        .shadow(color: Palette.plum.opacity(0.35), radius: 0, y: 3)
                 }
             }
             .scaleEffect(hud.hearts == 1 ? 1.08 : 1)
             .animation(hud.hearts == 1 ? .easeInOut(duration: 0.5).repeatForever(autoreverses: true) : .default, value: hud.hearts)
+            // Losing (or gaining) a heart jolts the row.
+            .keyframeAnimator(initialValue: CGFloat(0), trigger: hud.hearts) { content, x in
+                content.offset(x: x)
+            } keyframes: { _ in
+                KeyframeTrack {
+                    CubicKeyframe(-9, duration: 0.05); CubicKeyframe(8, duration: 0.07); CubicKeyframe(-5, duration: 0.07)
+                    CubicKeyframe(3, duration: 0.07); CubicKeyframe(0, duration: 0.08)
+                }
+            }
             .accessibilityElement()
             .accessibilityLabel("Hearts \(hud.hearts) of \(hud.maxHearts)")
 
             if hud.bloom || hud.ribbon {
-                Rectangle().fill(Palette.line).frame(width: 2, height: 28).padding(.horizontal, 6)
-                if hud.bloom { powerUp(.sunbloom, label: "Sunbloom") }
-                if hud.ribbon { powerUp(.ribbon, label: "Glow Ribbon") }
+                HStack(spacing: 8) {
+                    if hud.bloom { powerUp(.sunbloom, label: "Sunbloom") }
+                    if hud.ribbon { powerUp(.ribbon, label: "Glow Ribbon") }
+                }
+                .storybookPill(height: 44, horizontal: 12)
+                .padding(.leading, 8)
             }
         }
-        .padding(.horizontal, 14)
         .frame(height: 52)
-        .background(hudBackground(radius: 18))
     }
 
     private func powerUp(_ sprite: PixelSprite, label: String) -> some View {
@@ -109,24 +123,49 @@ struct HUDOverlay: View {
 
     private var rightCluster: some View {
         HStack(spacing: Space.s) {
-            HStack(spacing: Space.s) {
+            HStack(spacing: 10) {
                 PixelImage(sprite: .petal, scale: 3)
+                    // Each pickup spins the petal icon once.
+                    .keyframeAnimator(initialValue: Angle.zero, trigger: hud.petals) { content, angle in
+                        content.rotationEffect(angle)
+                    } keyframes: { _ in
+                        KeyframeTrack { CubicKeyframe(.degrees(-30), duration: 0.08); SpringKeyframe(.zero, duration: 0.35, spring: .bouncy) }
+                    }
                 Text("\(hud.petals)")
+                    .contentTransition(.numericText(value: Double(hud.petals)))
+                    .animation(.spring(duration: 0.25), value: hud.petals)
             }
             .modifier(HUDPill())
+            // ...and bumps the whole pill as the petal lands in it.
+            .keyframeAnimator(initialValue: CGFloat(1), trigger: hud.petals) { content, scale in
+                content.scaleEffect(scale)
+            } keyframes: { _ in
+                KeyframeTrack { CubicKeyframe(1, duration: 0.45); SpringKeyframe(1.18, duration: 0.08); SpringKeyframe(1, duration: 0.3, spring: .bouncy) }
+            }
             .accessibilityLabel("\(hud.petals) petals")
 
             HStack(spacing: Space.s) {
-                Image(systemName: hud.countdown ? "timer" : "clock").font(.system(size: 17, weight: .bold))
+                PixelImage(sprite: .clock, scale: 3)
                 Text(String(format: "%d:%02d", hud.seconds / 60, hud.seconds % 60))
+                    .contentTransition(.numericText(countsDown: hud.countdown))
+                    .animation(.snappy(duration: 0.2), value: hud.seconds)
             }
-            .foregroundStyle(hud.countdown && hud.seconds <= 15 ? Palette.pinkText : Palette.ink)
-            .modifier(HUDPill())
+            .modifier(HUDPill(tint: hud.countdown && hud.seconds <= 15 ? Palette.pinkText : nil))
+            // The last fifteen seconds of a countdown throb on every tick.
+            .keyframeAnimator(initialValue: CGFloat(1), trigger: hud.countdown && hud.seconds <= 15 ? hud.seconds : -1) { content, scale in
+                content.scaleEffect(scale)
+            } keyframes: { _ in
+                KeyframeTrack { SpringKeyframe(hud.countdown && hud.seconds <= 15 ? 1.12 : 1, duration: 0.1); SpringKeyframe(1, duration: 0.3) }
+            }
 
             Button(action: onPause) {
                 Image(systemName: "pause.fill").font(.system(size: 18, weight: .heavy))
+                    .foregroundStyle(Palette.plum)
+                    .frame(width: 52, height: 52)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(IconButtonStyle(size: 52))
+            .buttonStyle(.plain)
+            .storybookPill(height: 52, horizontal: 0)
             .help("Pause (Esc)")
             .accessibilityLabel("Pause")
         }
@@ -136,44 +175,39 @@ struct HUDOverlay: View {
         GeometryReader { proxy in
             let x = proxy.size.width * min(1, max(0, hud.progress))
             ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.75))
-                Capsule().fill(Palette.mint).frame(width: max(12, x))
-                Capsule().fill(Palette.gold).frame(width: 4, height: 20).offset(x: proxy.size.width / 2 - 2)
+                Capsule().fill(Palette.parchment)
+                Capsule().fill(Palette.pink).frame(width: max(14, x)).padding(3)
+                Capsule().strokeBorder(Palette.plum, lineWidth: 3)
                 Circle().fill(Palette.pink)
-                    .frame(width: 24, height: 24)
-                    .overlay(Circle().strokeBorder(.white, lineWidth: 4))
-                    .offset(x: x - 12)
-                PixelImage(sprite: .beacon, scale: 2)
-                    .offset(x: proxy.size.width - 2, y: -10)
+                    .frame(width: 22, height: 22)
+                    .overlay(Circle().strokeBorder(Palette.plum, lineWidth: 3))
+                    .overlay(Circle().fill(.white).frame(width: 6, height: 6).offset(x: -3, y: -3))
+                    .offset(x: x - 11)
+                PixelImage(sprite: .beacon, scale: 1)
+                    .offset(x: proxy.size.width + 4, y: -14)
             }
         }
-        .frame(width: 480, height: 12)
-        .shadow(color: Palette.ink.opacity(0.12), radius: 0, y: 3)
+        .frame(width: 480, height: 16)
+        .shadow(color: Palette.plum.opacity(0.3), radius: 0, y: 3)
         .padding(.bottom, Space.s)
         .accessibilityElement()
         .accessibilityLabel("\(Int(hud.progress * 100)) percent to the beacon")
     }
 
     private func hudBackground(radius: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .fill(.white.opacity(0.92))
-            .shadow(color: Palette.ink.opacity(0.15), radius: 0, y: 4)
+        StorybookShape(radius: radius)
     }
 }
 
 private struct HUDPill: ViewModifier {
+    var tint: Color?
+
     func body(content: Content) -> some View {
         content
-            .font(.rounded(21, .bold))
+            .font(.rounded(23, .heavy))
             .monospacedDigit()
-            .foregroundStyle(Palette.ink)
-            .padding(.horizontal, Space.l)
-            .frame(height: 52)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.white.opacity(0.92))
-                    .shadow(color: Palette.ink.opacity(0.15), radius: 0, y: 4)
-            )
+            .foregroundStyle(tint ?? Palette.plum)
+            .storybookPill(height: 52, horizontal: 18)
     }
 }
 
@@ -267,5 +301,17 @@ struct PauseOverlay: View {
             if nav.overlayFocus == 0 { onResume() } else { tiles[nav.overlayFocus - 1].action() }
         }
         if input.consumeFullscreen() { AppWindowController.toggleFullscreen() }
+    }
+}
+
+/// Background-only version of the storybook pill, for HUD cards whose content sets its own padding.
+private struct StorybookShape: View {
+    let radius: CGFloat
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        shape.fill(Palette.parchment)
+            .overlay(shape.inset(by: 1.5).stroke(Palette.plum, lineWidth: 3))
+            .background(shape.fill(Palette.plum.opacity(0.35)).offset(y: 4))
     }
 }

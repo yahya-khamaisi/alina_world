@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import SpriteKit
 
-/// Turns `PixelCatalog` character maps into crisp images (SwiftUI) and nearest-filtered textures (SpriteKit).
+/// Shared sprite facade. Legacy logical sizes keep gameplay stable; the renderer supplies detailed 2D art.
 enum PixelArt {
     private static var images: [String: CGImage] = [:]
     private static var textures: [String: SKTexture] = [:]
@@ -10,6 +10,7 @@ enum PixelArt {
 
     /// Size of the sprite in art pixels.
     static func size(of sprite: PixelSprite) -> CGSize {
+        if sprite == .alinaGlide { return CGSize(width: 30, height: 33) }
         let rows = PixelCatalog.rows(for: sprite)
         return CGSize(width: rows.map(\.count).max() ?? 0, height: rows.count)
     }
@@ -25,7 +26,7 @@ enum PixelArt {
         lock.lock()
         defer { lock.unlock() }
         if let cached = images[key] { return cached }
-        let rendered = render(PixelCatalog.rows(for: sprite), palette: palette(theme: theme, overrides: overrides), scale: scale)
+        let rendered = IllustratedArt.image(sprite, theme: theme ?? WorldThemes.ordered[0], scale: scale, variant: Int(overrides["#"] ?? 0))
         images[key] = rendered
         return rendered
     }
@@ -39,7 +40,7 @@ enum PixelArt {
         let key = cacheKey(sprite, theme: theme, overrides: overrides, scale: 1)
         if let cached = lock.withLock({ textures[key] }) { return cached }
         let texture = SKTexture(cgImage: image(sprite, theme: theme, overrides: overrides))
-        texture.filteringMode = .nearest
+        texture.filteringMode = .linear
         lock.withLock { textures[key] = texture }
         return texture
     }
@@ -56,16 +57,20 @@ enum PixelArt {
         return SKSpriteNode(texture: texture, size: CGSize(width: size.width * scale, height: size.height * scale))
     }
 
-    /// Solid square used by particle emitters so effects stay pixel-shaped.
+    /// Soft circular mote used by dust, weather and collection effects.
     static let squareTexture: SKTexture = {
-        let texture = SKTexture(cgImage: render(["O"], palette: ["O": 0xFFFFFF], scale: 4))
-        texture.filteringMode = .nearest
+        let image = Drawing.image(size: CGSize(width: 8, height: 8), scale: 8) { p in
+            p.ellipse(8, 8, 84, 84, [0xFFFFFF], outline: nil)
+        }
+        let texture = SKTexture(cgImage: image)
+        texture.filteringMode = .linear
         return texture
     }()
 
-    private static func palette(theme: WorldTheme?, overrides: [Character: UInt32]) -> [Character: UInt32] {
+    private static func palette(_ sprite: PixelSprite, theme: WorldTheme?, overrides: [Character: UInt32]) -> [Character: UInt32] {
         var palette = PixelCatalog.basePalette
         palette.merge((theme ?? WorldThemes.ordered[0]).spritePalette) { _, new in new }
+        palette.merge(PixelCatalog.spritePalette(for: sprite)) { _, new in new }
         palette.merge(overrides) { _, new in new }
         return palette
     }

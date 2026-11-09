@@ -15,9 +15,9 @@ final class BlockNode: SKNode {
     var revealed = false
     private let visualNode: SKSpriteNode
 
-    init(kind: BlockKind, theme: WorldTheme, topExposed: Bool = true) {
+    init(kind: BlockKind, theme: WorldTheme, topExposed: Bool = true, artVariant: Int = 0) {
         blockKind = kind
-        visualNode = GameGraphics.makeBlockNode(kind: kind, theme: theme, topExposed: topExposed)
+        visualNode = GameGraphics.makeBlockNode(kind: kind, theme: theme, topExposed: topExposed, artVariant: artVariant)
 
         super.init()
         name = "block"

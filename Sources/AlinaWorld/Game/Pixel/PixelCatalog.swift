@@ -1,10 +1,11 @@
 import Foundation
 
 enum PixelSprite: String, CaseIterable {
-    case alinaIdle, alinaBlink, alinaRun, alinaJump, alinaFall
+    case alinaIdle, alinaBlink, alinaRun, alinaRunB, alinaJump, alinaDoubleJump, alinaFall, alinaGlide
     case gloomling, gloomlingStep, thornbeetle, mothwisp, mothwispFlap, guardian
-    case petal, petalTurn, crystal, sunbloom, ribbon, heart, heartEmpty
-    case bloomBlock, bloomBlockUsed, mossbrick, groundTop, groundFill, stone, log, thorns, leafPad, cloudPad, beacon
+    case petal, petalTurn, crystal, sunbloom, ribbon, heart, heartEmpty, clock
+    case bloomBlock, bloomBlockUsed, mossbrick, groundTop, groundFill, stone, stoneTop, log, thorns, leafPad, cloudPad, beacon
+    case leafPadLeft, leafPadRight, leafPadSingle
     case sun, cloud, tree, bush, flower, hillFar, hillNear
     case frostpuff, shellcrab, starwisp, springShell
 }
@@ -28,13 +29,21 @@ enum PixelCatalog {
         "f": 0xFF7E6B, "p": 0xFFC0B0, "U": 0xA9C9E8, "J": 0x3E7FC4 // coral, coral light, ice, ice shadow
     ]
 
+    /// Colours that belong to one sprite only (HUD icons, the hand-drawn Alina set).
+    static func spritePalette(for sprite: PixelSprite) -> [Character: UInt32] {
+        switch sprite {
+        case .heart: return ["o": 0x4B1C3A, "P": 0xF2405F, "L": 0xFF8EA2, "W": 0xFFFFFF, "D": 0xC0244A]
+        case .heartEmpty: return ["o": 0x4B1C3A, "P": 0xE3D2DA, "L": 0xF3EAEE, "W": 0xFFFFFF, "D": 0xC6B0BC]
+        case .petal, .petalTurn: return ["o": 0x8E2D5E, "F": 0xFF9CC4, "W": 0xFFE2EE, "K": 0xE2609A]
+        case .clock: return ["o": 0x4B1C3A, "G": 0xF6C343, "Q": 0xD9901A, "W": 0xFFF8EC, "d": 0x4B1C3A]
+        default: return AlinaArt.palette(for: sprite)
+        }
+    }
+
     static func rows(for sprite: PixelSprite) -> [String] {
         switch sprite {
-        case .alinaIdle: return alinaHead + alinaIdleBody
-        case .alinaBlink: return alinaBlinkHead + alinaIdleBody
-        case .alinaRun: return alinaHead + alinaRunBody
-        case .alinaJump: return alinaHead + alinaJumpBody
-        case .alinaFall: return alinaHead + alinaFallBody
+        case .alinaIdle, .alinaBlink, .alinaRun, .alinaRunB, .alinaJump, .alinaDoubleJump, .alinaFall, .alinaGlide:
+            return AlinaArt.rows(for: sprite) ?? []
         case .gloomling: return gloomling
         case .gloomlingStep: return Array(gloomling.dropLast(2)) + [".NN.NNNN.NN.", "N...N..N...N"]
         case .thornbeetle: return thornbeetle
@@ -47,18 +56,23 @@ enum PixelCatalog {
         case .sunbloom: return sunbloom
         case .ribbon: return ribbon
         case .heart: return heart
-        case .heartEmpty: return heart.map { String($0.map { $0 == "." ? "." : "e" }) }
+        case .heartEmpty: return heart
+        case .clock: return clock
         case .bloomBlock: return bloomBlock
         case .bloomBlockUsed: return bloomBlockUsed
         case .mossbrick: return mossbrick
-        case .groundTop: return groundTop
-        case .groundFill: return Array(groundTop.suffix(11)) + Array(groundTop.suffix(11).prefix(5))
-        case .stone: return stone
+        case .groundTop: return TileArt.groundTop
+        case .groundFill: return TileArt.groundFill
+        case .stone: return TileArt.rockBlock(cap: false)
+        case .stoneTop: return TileArt.rockBlock(cap: true)
+        case .leafPadLeft: return TileArt.leafPad(left: true, right: false)
+        case .leafPadRight: return TileArt.leafPad(left: false, right: true)
+        case .leafPadSingle: return TileArt.leafPad(left: true, right: true)
         case .log: return log
         case .thorns: return thorns
-        case .leafPad: return leafPad
+        case .leafPad: return TileArt.leafPad(left: false, right: false)
         case .cloudPad: return cloudPad
-        case .beacon: return beacon
+        case .beacon: return TileArt.beacon
         case .sun: return sun
         case .cloud: return cloud
         case .tree: return tree
@@ -75,72 +89,6 @@ enum PixelCatalog {
             }
         }
     }
-
-    // MARK: Alina (14 × 18)
-
-    private static let alinaHead = [
-        "....oooooo....",
-        "...oHHHHHHo...",
-        "..oHHhhHHHHo..",
-        ".oHHhHHHHHHHo.",
-        ".oHHSSSSSSHHo.",
-        ".oHSSESSSESHo.",
-        ".oHSSESSSESHo.",
-        "KoHSCSSSSSCHo."
-    ]
-    private static let alinaBlinkHead = Array(alinaHead.prefix(5)) + [
-        ".oHSSSSSSSSHo.",
-        ".oHSSoSSSoSHo.",
-        "KoHSCSSSSSCHo."
-    ]
-    private static let alinaIdleBody = [
-        "KKoHSSSmSSHo..",
-        ".KoHoPPPPoHo..",
-        "..oSPPPGPPPSo.",
-        "..oSPDPPPDPSo.",
-        "..ooPPPPPPPoo.",
-        "..oPPPPPPPPPo.",
-        "..oWWWWWWWWWo.",
-        "...oooSoSooo..",
-        "....oBBoBBo...",
-        "....oBBoBBo..."
-    ]
-    private static let alinaRunBody = [
-        "KKoHSSSmSSHo..",
-        ".KoHoPPPPoHo..",
-        "...oPPPGPPPSo.",
-        "..oSPDPPPDPo..",
-        "..ooPPPPPPPoo.",
-        "..oPPPPPPPPPo.",
-        "..oWWWWWWWWWo.",
-        "..ooSoooSoo...",
-        ".oBBo...oBBo..",
-        ".oBo.....oBo.."
-    ]
-    private static let alinaJumpBody = [
-        "KKoHSSSmSSHoS.",
-        ".KoHoPPPPoHoS.",
-        "..oSPPPGPPPo..",
-        "...oPDPPPDPo..",
-        "..ooPPPPPPPoo.",
-        "..oPPPPPPPPPo.",
-        "..oWWWWWWWWWo.",
-        "...ooSooSoo...",
-        "...oBBooBBo...",
-        ".............."
-    ]
-    private static let alinaFallBody = [
-        "KKoHSSSmSSHo..",
-        ".KoHoPPPPoHo..",
-        "SooPPPGPPPooS.",
-        "...oPDPPPDPo..",
-        "..ooPPPPPPPoo.",
-        "..oPPPPPPPPPo.",
-        "..oWWWWWWWWWo.",
-        "...ooSooSoo...",
-        "...oBBooBBo...",
-        ".............."
-    ]
 
     // MARK: Night Crown minions
 
@@ -213,8 +161,38 @@ enum PixelCatalog {
 
     // MARK: Items
 
-    private static let petal = ["...FF...", "..FFFF..", "FF.GG.FF", "FFFGGFFF", "FFFGGFFF", "FF.GG.FF", "..FFFF..", "...FF..."]
-    private static let petalTurn = ["...FF...", "...FF...", "..FGGF..", "..FGGF..", "..FGGF..", "..FGGF..", "...FF...", "...FF..."]
+    private static let petal = [
+        "....oooo..",
+        "...oWWFFo.",
+        "..oWWFFFFo",
+        "..oWFFFFFo",
+        ".oWFFFFFKo",
+        ".oFFFFFFKo",
+        "oFFFFFFKo.",
+        "oFFFFFKKo.",
+        "oFFFFKKo..",
+        "oFFKKKo...",
+        ".oKKoo....",
+        "..oo......"
+    ]
+    private static let petalTurn = petal.map { row in
+        let chars = Array(row)
+        return String([0, 2, 4, 5, 7, 9].map { chars[$0] })
+    }
+    private static let clock = [
+        ".oo......oo.",
+        "oGGo.oo.oGGo",
+        "oGooQGGQooGo",
+        ".ooQGWWGQoo.",
+        ".oQWWWdWWQo.",
+        "oQWWWWdWWWQo",
+        "oQWWWWddWWQo",
+        "oQWWWWWWWWQo",
+        ".oQWWWWWWQo.",
+        ".ooQGWWGQoo.",
+        ".o.oQQQQo.o.",
+        "o...oooo...o"
+    ]
     private static let crystal = [
         "..GG..GG..", ".GOGGGGQG.", "GOGGGGGGQG", "GGGGGGGGQG", "GGGGGGGGQG",
         ".GGGGGGQG.", "..GGGGQG..", "...GGQG...", "....GG...."
@@ -224,7 +202,20 @@ enum PixelCatalog {
         "...YYYY...", "....xx....", "..g.xx.g..", "..ggxxgg..", "....xx...."
     ]
     private static let ribbon = ["KK......KK", "KPK....KPK", "KPPKKKKPPK", "KPPPKKPPPK", "KPPKKKKPPK", "KPK.KK.KPK", "KK..KK..KK", "....K.K..."]
-    private static let heart = [".PP.PP.", "PWPPPPP", "PPPPPPD", ".PPPPD.", "..PPD..", "...D..."]
+    private static let heart = [
+        "..ooo...ooo..",
+        ".oWLPo.oLPPo.",
+        "oWLPPPoPPPPDo",
+        "oLPPPPPPPPPDo",
+        "oPPPPPPPPPPDo",
+        "oPPPPPPPPPDDo",
+        ".oPPPPPPPDDo.",
+        "..oPPPPPDDo..",
+        "...oPPPDDo...",
+        "....oPDDo....",
+        ".....oDo.....",
+        "......o......"
+    ]
 
     // MARK: Tiles (16 × 16)
 
@@ -318,7 +309,18 @@ enum PixelCatalog {
         "aeeeeeeeeeeeeeed",
         "eddddddddddddddd"
     ]
-    private static let log: [String] = (0..<16).map { $0 % 5 == 2 ? "tBhhBBhBtBhBBhBt" : "tBhhBBhBBhhBBhBt" }
+    /// Upright log: dark rim, bark grooves, light down the sunlit right side.
+    private static let log: [String] = (0..<16).map { y in
+        String((0..<16).map { x -> Character in
+            if x == 0 || x == 15 { return "o" }
+            if x == 1 { return "t" }
+            if x >= 12 && x <= 13 { return (x + y) % 6 == 0 ? "B" : "q" }
+            if x == 14 { return "B" }
+            let groove = [3, 6, 10][(y / 5) % 3]
+            if x == groove || (x == groove + 1 && y % 4 == 1) { return "t" }
+            return (x * 3 + y * 7) % 13 == 0 ? "h" : "B"
+        })
+    }
     private static let thorns = [
         "................",
         "................",

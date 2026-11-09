@@ -23,7 +23,7 @@ final class CollectibleNode: SKNode {
         let visual: SKSpriteNode
         switch kind {
         case .coin:
-            visual = PixelArt.node(.petal, scale: 3)
+            visual = PixelArt.node(.petal, scale: 2.5)
             let frames = [PixelArt.texture(.petal), PixelArt.texture(.petalTurn)]
             visual.run(.repeatForever(.animate(with: frames, timePerFrame: 0.22)))
         case .crystal:

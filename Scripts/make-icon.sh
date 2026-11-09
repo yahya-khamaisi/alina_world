@@ -6,14 +6,12 @@ SRC="$ROOT/Sources/AlinaWorld/Resources/AppIcon-1024.png"
 ICONSET="$ROOT/Sources/AlinaWorld/Resources/AppIcon.iconset"
 OUT="$ROOT/Sources/AlinaWorld/Resources/AppIcon.icns"
 
-# Render the icon from the game's pixel sprites so it always matches the in-game art.
-PIXEL="$ROOT/Sources/AlinaWorld/Game/Pixel"
+# Render directly from the production paintings, without compiling the game renderer.
 RENDERER="$ROOT/.build/icon-renderer"
 mkdir -p "$ROOT/.build"
 swiftc -O -swift-version 5 -module-name IconRenderer -o "$RENDERER" \
-    "$PIXEL/PixelArt.swift" "$PIXEL/PixelCatalog.swift" "$ROOT/Sources/AlinaWorld/Game/WorldTheme.swift" \
     "$ROOT/Scripts/IconRenderer/main.swift"
-"$RENDERER" "$SRC"
+"$RENDERER" "$SRC" "$ROOT/Sources/AlinaWorld/Resources/Art"
 cp "$SRC" "$ROOT/Sources/AlinaWorld/Resources/icon.png"
 
 mkdir -p "$ICONSET"
@@ -28,5 +26,5 @@ sips -z 512 512   "$SRC" --out "$ICONSET/icon_256x256@2x.png" >/dev/null
 sips -z 512 512   "$SRC" --out "$ICONSET/icon_512x512.png" >/dev/null
 cp "$SRC" "$ICONSET/icon_512x512@2x.png"
 
-iconutil -c icns "$ICONSET" -o "$OUT"
+"$RENDERER" --pack "$ICONSET" "$OUT"
 echo "Created $OUT"

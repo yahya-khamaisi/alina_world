@@ -18,7 +18,7 @@ struct MissionCompleteView: View {
 
     var body: some View {
         ZStack {
-            PixelBackdrop(theme: theme, dense: theme.key == "grove")
+            PixelBackdrop(theme: theme, dense: theme.key == "grove", weather: mission?.weather)
                 .ignoresSafeArea()
 
             GeometryReader { proxy in
@@ -124,17 +124,46 @@ struct MissionCompleteView: View {
         }
         .frame(width: 420)
         .card(padding: Space.xxl, radius: 32)
+        // The card springs up into place as the results appear.
+        .scaleEffect(revealed > 0 ? 1 : 0.86)
+        .offset(y: revealed > 0 ? 0 : 30)
+        .animation(.spring(response: 0.45, dampingFraction: 0.62), value: revealed > 0)
     }
 
     private func star(_ index: Int, size: CGFloat) -> some View {
         let earned = result.stars[index]
         let shown = revealed > index
-        return Image(systemName: "star.fill")
-            .font(.system(size: size, weight: .black))
-            .foregroundStyle(earned && shown ? Palette.gold : Color(hex: 0xEDE5D8))
-            .shadow(color: earned && shown ? Color(hex: 0xD9901A) : .clear, radius: 0, y: 3)
-            .scaleEffect(shown ? 1 : 0.4)
-            .opacity(shown ? 1 : 0.5)
+        let lit = earned && shown
+        return ZStack {
+            // Sparkle rays burst out behind an earned star as it lands.
+            if lit {
+                ForEach(0..<8, id: \.self) { ray in
+                    Capsule()
+                        .fill(ray.isMultiple(of: 2) ? Color(hex: 0xFFE68A) : Color(hex: 0xFFB3D6))
+                        .frame(width: 5, height: size * 0.28)
+                        .offset(y: -size * 0.78)
+                        .rotationEffect(.degrees(Double(ray) * 45))
+                }
+                .keyframeAnimator(initialValue: (scale: CGFloat(0.4), opacity: 1.0), trigger: revealed) { rays, v in
+                    rays.scaleEffect(v.scale).opacity(v.opacity)
+                } keyframes: { _ in
+                    KeyframeTrack(\.scale) { CubicKeyframe(1.25, duration: 0.35) }
+                    KeyframeTrack(\.opacity) { CubicKeyframe(1, duration: 0.15); CubicKeyframe(0, duration: 0.3) }
+                }
+            }
+            Image(systemName: "star.fill")
+                .font(.system(size: size * 1.1, weight: .black))
+                .foregroundStyle(lit ? Palette.plum : Color(hex: 0xD9CCBC))
+                .offset(y: 3)
+            Image(systemName: "star.fill")
+                .font(.system(size: size, weight: .black))
+                .foregroundStyle(lit ? AnyShapeStyle(LinearGradient(colors: [Color(hex: 0xFFE68A), Palette.gold, Color(hex: 0xE8A22B)],
+                                                                    startPoint: .top, endPoint: .bottom))
+                                     : AnyShapeStyle(Color(hex: 0xEDE5D8)))
+        }
+        .scaleEffect(shown ? 1 : 0.3)
+        .rotationEffect(.degrees(shown ? 0 : -120))
+        .opacity(shown ? 1 : 0.4)
     }
 
     private func handleKeys() {

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Design tokens for the menus: cream and white cards, plum ink, Alina pink.
 enum Palette {
-    static let ink = Color(hex: 0x2B2148)
+    static let ink = Color(hex: 0x4B1C3A)
     static let muted = Color(hex: 0x6B6386)
     static let body = Color(hex: 0x4E4668)
     static let cream = Color(hex: 0xFFFBF4)
@@ -25,6 +25,40 @@ enum Palette {
     static let sky = Color(hex: 0x4AA8E8)
     static let skySoft = Color(hex: 0xE7F4FD)
     static let skyText = Color(hex: 0x1F5F8C)
+    /// v3 storybook look: plum outlines on warm cream, as in the approved mockups.
+    static let plum = Color(hex: 0x4B1C3A)
+    static let parchment = Color(hex: 0xFFF4E6)
+    static let parchmentShade = Color(hex: 0xF3D9C4)
+}
+
+/// Cream capsule with a plum outline and a lit top edge — the v3 HUD and menu pill.
+struct StorybookPill: ViewModifier {
+    var height: CGFloat = 52
+    var radius: CGFloat? = nil
+    var horizontal: CGFloat = Space.l
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius ?? height / 2, style: .continuous)
+        content
+            .padding(.horizontal, horizontal)
+            .frame(height: height)
+            .background(
+                ZStack {
+                    shape.fill(Palette.parchment)
+                    shape.inset(by: 4).stroke(Color.white.opacity(0.8), lineWidth: 2).mask(
+                        LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .center)
+                    )
+                    shape.inset(by: 1.5).stroke(Palette.plum, lineWidth: 3)
+                }
+                .background(shape.fill(Palette.plum.opacity(0.35)).offset(y: 4))
+            )
+    }
+}
+
+extension View {
+    func storybookPill(height: CGFloat = 52, radius: CGFloat? = nil, horizontal: CGFloat = Space.l) -> some View {
+        modifier(StorybookPill(height: height, radius: radius, horizontal: horizontal))
+    }
 }
 
 /// 8-pt spacing scale.
@@ -120,10 +154,15 @@ struct CardBackground: ViewModifier {
         content
             .padding(padding)
             .background(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(.white)
-                    .shadow(color: Palette.edge, radius: 0, y: 8)
-                    .shadow(color: Palette.ink.opacity(0.12), radius: 24, y: 16)
+                ZStack {
+                    let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    shape.fill(LinearGradient(colors: [Color(hex: 0xFFFCF7), Palette.parchment], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    // Inner rim and plum outline, like the parchment plaques in the v3 mockups.
+                    shape.inset(by: 9).stroke(Palette.parchmentShade, lineWidth: 2)
+                    shape.inset(by: 2).stroke(Palette.plum, lineWidth: 4)
+                }
+                .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Palette.plum).offset(y: 8))
+                .shadow(color: Palette.plum.opacity(0.22), radius: 28, y: 18)
             )
     }
 }

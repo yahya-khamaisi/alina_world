@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Crisp pixel sprite for SwiftUI, rendered at the display's backing scale so it never blurs.
+/// Resolution-independent sprite sizing shared by the illustrated UI and gameplay.
 struct PixelImage: View {
     let sprite: PixelSprite
     var scale: CGFloat = 4
@@ -11,132 +11,155 @@ struct PixelImage: View {
 
     var body: some View {
         let pixelScale = max(1, Int((scale * displayScale).rounded()))
+        let size = PixelArt.size(of: sprite)
         Image(
             decorative: PixelArt.image(sprite, theme: theme, overrides: overrides, scale: pixelScale),
-            scale: CGFloat(pixelScale) / scale
+            scale: 1
         )
-        .interpolation(.none)
+        .resizable()
+        .interpolation(.high)
+        .frame(width: size.width * scale, height: size.height * scale)
         .accessibilityHidden(true)
     }
 }
 
-/// The shared pixel environment — banded sky, sun, clouds, two hill layers, trees and textured ground.
-/// Mirrors the in-game parallax so menus and levels feel like the same place.
+/// The shared painted environment — the same golden-hour sky, mountains, hills, props and cobbled ground as the
+/// in-game parallax (`Scenery`, `Props`, `TileArt`), so menus and levels feel like one place.
 struct PixelBackdrop: View {
     var theme: WorldTheme = WorldThemes.ordered[0]
     /// Extra trees for forest worlds.
     var dense = false
     /// Ground strip height; previews pass a small value so scenery, not dirt, fills the frame.
     var groundHeight: CGFloat?
-    /// Horizontal sun position as a fraction of the width, clear of the stat pills on the right.
+    /// Kept for callers; the sun is painted into the sky.
     var sunPosition: CGFloat = 0.62
-
-    @Environment(\.displayScale) private var displayScale
+    /// Big blossom tree framing the left edge, as on the title screen.
+    var framingTree = false
+    var weather: MissionWeather? = nil
 
     var body: some View {
         GeometryReader { proxy in
-            let w = proxy.size.width
-            let h = proxy.size.height
+            if framingTree, let image = StorybookArt.image(.title) {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+            } else {
+                paintedLayers(size: proxy.size)
+            }
+        }
+        .overlay { WeatherOverlay(weather: weather ?? MissionWeather(kind: theme.key == "cavern" ? .embers : .sunny, seed: 17)) }
+        .accessibilityHidden(true)
+    }
+
+    private func paintedLayers(size: CGSize) -> some View {
+        let proxy = size
+        return Group {
+            let w = proxy.width
+            let h = proxy.height
             let groundHeight = self.groundHeight ?? max(96, h * 0.16)
             let groundTop = h - groundHeight
-            // Shrink scenery in short previews so sky still shows above the hills.
-            let k = min(1, h / 760)
-            let farScale = px(12, k), nearScale = px(14, k)
+            // Points per art pixel: the painted sky (280 px) fills the view height.
+            let u = max(1, h / 250)
+            let palette = BackdropPalette.forTheme(theme)
 
             ZStack(alignment: .topLeading) {
-                sky(height: groundTop)
+                Color(hex: palette.sky.last ?? 0xFFFFFF)
+                if let painting = StorybookArt.image(.environment(for: theme.key)) {
+                    Image(decorative: painting, scale: 1).resizable().interpolation(.high)
+                        .scaledToFill()
+                        .frame(width: w, height: h)
+                        .clipped()
+                } else {
+                    pixelImage(IllustratedScenery.image(.sky, theme: theme), u: u)
+                    .frame(width: CGFloat(Scenery.skySize.width) * u, height: CGFloat(Scenery.skySize.height) * u)
+                    .offset(x: (w - CGFloat(Scenery.skySize.width) * u) / 2, y: min(0, groundTop - 236 * u))
 
-                place(PixelImage(sprite: .sun, scale: px(8, k)), x: w * sunPosition, y: 56 * k)
-                place(PixelImage(sprite: .cloud, scale: px(7, k)), x: w * 0.09, y: h * 0.1)
-                place(PixelImage(sprite: .cloud, scale: px(5, k)), x: w * 0.44, y: h * 0.2)
-                place(PixelImage(sprite: .cloud, scale: px(4, k)), x: w * 0.67, y: h * 0.08)
-                place(PixelImage(sprite: .cloud, scale: px(3, k)), x: w * 0.26, y: h * 0.36)
-
-                // Far hills sit on a band of their own color so the gaps read as distance, not sky.
-                Rectangle()
-                    .fill(Color(hex: theme.hills.1))
-                    .frame(width: w, height: 112 * k)
-                    .offset(y: groundTop - 112 * k)
-                ForEach(0..<Int(w / (24 * farScale - 8)) + 2, id: \.self) { i in
-                    place(PixelImage(sprite: .hillFar, scale: farScale, theme: theme),
-                          x: CGFloat(i) * (24 * farScale - 8) - 60 * k, y: groundTop - 100 * k - 8 * farScale)
+                    strip(.clouds, baseY: groundTop - 125 * u, u: u, width: w, fill: nil, shift: 0.31)
+                    strip(.mountains, baseY: groundTop - 58 * u, u: u, width: w, fill: palette.haze, shift: 0.12)
+                    strip(.farHills, baseY: groundTop - 18 * u, u: u, width: w, fill: palette.farHill.2, shift: 0.53)
+                }
+                if StorybookArt.image(.environment(for: theme.key)) == nil {
+                    strip(.nearHills, baseY: groundTop + 3 * u, u: u, width: w, fill: palette.nearHill.2, shift: 0.2)
                 }
 
-                Rectangle()
-                    .fill(Color(hex: theme.grass.1))
-                    .frame(width: w, height: 18)
-                    .offset(y: groundTop - 16)
-                ForEach(0..<Int(w / (34 * nearScale)) + 2, id: \.self) { i in
-                    place(PixelImage(sprite: .hillNear, scale: nearScale, theme: theme),
-                          x: CGFloat(i) * 34 * nearScale - 100 * k, y: groundTop + 4 - 8 * nearScale)
-                }
-
-                scenery(width: w, groundTop: groundTop, k: k)
-                ground(width: w, height: groundHeight)
+                props(width: w, groundTop: groundTop, u: u)
+                ground(width: w, height: groundHeight, u: u)
                     .offset(y: groundTop)
             }
             .frame(width: w, height: h, alignment: .topLeading)
             .clipped()
         }
-        .accessibilityHidden(true)
     }
 
-    /// Integer pixel scale for a sprite, shrunk by `k` but never below 2.
-    private func px(_ base: CGFloat, _ k: CGFloat) -> CGFloat {
-        max(2, (base * k).rounded())
+    private func pixelImage(_ image: CGImage, u: CGFloat) -> some View {
+        Image(decorative: image, scale: 1).resizable().interpolation(.high)
     }
 
-    private func sky(height: CGFloat) -> some View {
-        let fractions: [CGFloat] = [0.21, 0.17, 0.145, 0.13]
-        return VStack(spacing: 0) {
-            ForEach(0..<4, id: \.self) { i in
-                Rectangle().fill(Color(hex: theme.sky[i])).frame(height: height * fractions[i])
+    /// One seamless layer tiled across the width with its bottom on `baseY`, plus a solid fill below it.
+    private func strip(_ layer: Scenery.Layer, baseY: CGFloat, u: CGFloat, width: CGFloat, fill: UInt32?, shift: CGFloat) -> some View {
+        let image = IllustratedScenery.image(layer, theme: theme)
+        let logical = IllustratedScenery.size(layer)
+        let tileW = logical.width * u, tileH = logical.height * u
+        let count = Int(width / tileW) + 2
+        return ZStack(alignment: .topLeading) {
+            if let fill {
+                Rectangle().fill(Color(hex: fill)).frame(width: width, height: 2000).offset(y: baseY - 1)
             }
-            Rectangle().fill(Color(hex: theme.sky[4]))
+            ForEach(0..<count, id: \.self) { i in
+                pixelImage(image, u: u)
+                    .frame(width: tileW, height: tileH)
+                    .offset(x: CGFloat(i) * tileW - tileW * shift, y: baseY - tileH)
+            }
         }
-        .frame(height: height + 2)
     }
 
     @ViewBuilder
-    private func scenery(width w: CGFloat, groundTop: CGFloat, k: CGFloat) -> some View {
-        let big = px(8, k), mid = px(6, k), bush = px(5, k), flower = px(4, k)
-        place(PixelImage(sprite: .tree, scale: big, theme: theme), x: w * 0.03, y: groundTop - 15 * big)
-        place(PixelImage(sprite: .tree, scale: mid, theme: theme), x: w * 0.135, y: groundTop - 15 * mid)
-        place(PixelImage(sprite: .tree, scale: big, theme: theme), x: w * 0.87, y: groundTop - 15 * big)
-        if dense {
-            place(PixelImage(sprite: .tree, scale: px(7, k), theme: theme), x: w * 0.48, y: groundTop - 15 * px(7, k))
-            place(PixelImage(sprite: .tree, scale: mid, theme: theme), x: w * 0.79, y: groundTop - 15 * mid)
+    private func props(width w: CGFloat, groundTop: CGFloat, u: CGFloat) -> some View {
+        let items: [(Props.Kind, CGFloat, Int, Bool)] = [
+            (.bush, 0.30, 0, false), (.rock, 0.42, 1, false), (.flowers, 0.52, 2, false), (.bush, 0.63, 1, true),
+            (.fence, 0.86, 0, false), (.flowers, 0.95, 0, true), (.rock, 0.76, 2, true), (.flowers, 0.22, 1, false)
+        ] + (dense ? [(.tree, 0.55, 1, false), (.tree, 0.8, 2, true)] : [])
+        if framingTree {
+            prop(.tree, x: w * 0.04, groundTop: groundTop, u: u * 1.9, variant: 0, flip: false)
+        } else {
+            prop(.tree, x: w * 0.08, groundTop: groundTop, u: u * 1.2, variant: 0, flip: false)
+            prop(.tree, x: w * 0.93, groundTop: groundTop, u: u, variant: 2, flip: true)
         }
-        ForEach([0.33, 0.58, 0.75], id: \.self) { fraction in
-            place(PixelImage(sprite: .bush, scale: bush, theme: theme), x: w * fraction, y: groundTop - 5 * bush)
-        }
-        ForEach([0.235, 0.257, 0.44, 0.69, 0.712], id: \.self) { fraction in
-            place(PixelImage(sprite: .flower, scale: flower, theme: theme), x: w * fraction, y: groundTop - 6 * flower)
+        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+            prop(item.0, x: w * item.1, groundTop: groundTop, u: u, variant: item.2, flip: item.3)
         }
     }
 
-    private func ground(width: CGFloat, height: CGFloat) -> some View {
-        let pixelScale = max(1, Int((3 * displayScale).rounded()))
-        let dirt = PixelArt.image(.groundFill, theme: theme, scale: pixelScale)
+    private func prop(_ kind: Props.Kind, x: CGFloat, groundTop: CGFloat, u: CGFloat, variant: Int, flip: Bool) -> some View {
+        let image = IllustratedArt.prop(kind, theme: theme, variant: variant)
+        let logical = IllustratedArt.propSize(kind)
+        let size = CGSize(width: logical.width * u, height: logical.height * u)
+        return pixelImage(image, u: u)
+            .frame(width: size.width, height: size.height)
+            .scaleEffect(x: flip ? -1 : 1)
+            .offset(x: x - size.width / 2, y: groundTop - size.height + 2 * u)
+    }
+
+    private func ground(width: CGFloat, height: CGFloat, u: CGFloat) -> some View {
+        let tile = 16 * u
+        let top = PixelArt.image(.groundTop, theme: theme)
+        let fill = PixelArt.image(.groundFill, theme: theme)
+        let columns = Int(width / tile) + 1
+        let rows = Int(height / tile) + 1
         return VStack(spacing: 0) {
-            Rectangle().fill(Color(hex: theme.grass.0)).frame(height: 6)
-            Rectangle().fill(Color(hex: theme.grass.1)).frame(height: 14)
             HStack(spacing: 0) {
-                ForEach(0..<Int(width / 24) + 1, id: \.self) { _ in
-                    Rectangle().fill(Color(hex: theme.grass.2)).frame(width: 16)
-                    Rectangle().fill(Color(hex: theme.grass.1)).frame(width: 8)
+                ForEach(0..<columns, id: \.self) { _ in pixelImage(top, u: u).frame(width: tile, height: tile) }
+            }
+            ForEach(0..<max(0, rows - 1), id: \.self) { _ in
+                HStack(spacing: 0) {
+                    ForEach(0..<columns, id: \.self) { _ in pixelImage(fill, u: u).frame(width: tile, height: tile) }
                 }
             }
-            .frame(width: width, height: 8, alignment: .leading)
-            .clipped()
-            Image(decorative: dirt, scale: CGFloat(pixelScale) / 3)
-                .resizable(resizingMode: .tile)
-                .interpolation(.none)
         }
-        .frame(width: width, height: height)
-    }
-
-    private func place<V: View>(_ view: V, x: CGFloat, y: CGFloat) -> some View {
-        view.offset(x: x, y: y)
+        .frame(width: width, height: height, alignment: .topLeading)
+        .clipped()
     }
 }

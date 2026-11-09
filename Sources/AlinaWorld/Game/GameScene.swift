@@ -64,6 +64,15 @@ final class GameScene: SKScene {
     private var checkpoint: CGPoint = .zero
 
     private let parallax = ParallaxBackground()
+    private let foreground = ForegroundLayer()
+    /// Where the camera follows to; shake is added on top so smoothing never eats it.
+    private var cameraBase: CGPoint?
+    private var shakeAmount: CGFloat = 0
+    /// Hit-stop: gameplay freezes for a few frames on big impacts so they land with weight.
+    private var hitStop: CGFloat = 0
+    #if DEBUG
+    private let rigPreview = RigPreview()
+    #endif
     private let cameraNode = SKCameraNode()
     private var lastUpdateTime: TimeInterval = 0
 
@@ -105,6 +114,12 @@ final class GameScene: SKScene {
             CGRect(x: $0.position.x - 16, y: $0.position.y - 16, width: 32, height: 32)
         }
         alina.slippery = level.theme.key == "frost"
+        #if DEBUG
+        // Development shortcut for checking power-up art: ALINA_POWERUPS=ribbon,bloom
+        let powerUps = ProcessInfo.processInfo.environment["ALINA_POWERUPS"] ?? ""
+        if powerUps.contains("ribbon") { alina.grantRibbon() }
+        if powerUps.contains("bloom") { alina.grantBloom() }
+        #endif
 
         maxHearts = assistMode ? 4 : 3
         hearts = maxHearts
@@ -112,9 +127,14 @@ final class GameScene: SKScene {
         alina.position = level.playerStart
         level.worldNode.addChild(alina)
 
+        #if DEBUG
+        if RigPreview.enabled { rigPreview.attach(to: cameraNode) }
+        #endif
+        foreground.attach(to: self, theme: level.theme, mapWidth: level.map.worldSize().width)
         parallax.attach(
             to: self,
             theme: level.theme,
+            weather: mission.weather,
             mapWidth: level.map.worldSize().width,
             groundTop: level.groundTop,
             ambientParticles: ambientParticles
@@ -148,6 +168,7 @@ final class GameScene: SKScene {
     override func willMove(from view: SKView) {
         InputController.shared.mode = .menu
         parallax.cleanup()
+        foreground.cleanup()
     }
 
     // MARK: Pause
@@ -183,6 +204,11 @@ final class GameScene: SKScene {
         lastUpdateTime = currentTime
         let clamped = min(delta, 1.0 / 30.0)
         let dt = CGFloat(clamped)
+        if hitStop > 0 {
+            hitStop -= dt
+            updateCamera(delta: dt)
+            return
+        }
         elapsed += dt
 
         if InputController.shared.consumePause() {
@@ -201,10 +227,7 @@ final class GameScene: SKScene {
         updateMovingPlatforms(dt: dt)
         alina.update(input: InputController.shared, delta: clamped, difficulty: mission.difficulty)
         if alina.didAirJump {
-            GameGraphics.burst(
-                at: CGPoint(x: alina.position.x, y: alina.position.y - 14), in: level.worldNode,
-                colors: [.white, SKColor(hex: 0xFF8DBE)], count: 10, speed: 120
-            )
+            GameGraphics.sparklePuff(at: CGPoint(x: alina.position.x, y: alina.position.y - 18), in: level.worldNode)
         }
         moveAndCollide(delta: clamped)
 
@@ -220,6 +243,10 @@ final class GameScene: SKScene {
         updateCheckpoint()
         updateCamera(delta: dt)
         parallax.update(visible: visibleRect, delta: clamped)
+        foreground.update(visible: visibleRect, delta: clamped)
+        #if DEBUG
+        rigPreview.update(dt: dt)
+        #endif
 
         if mission.objective == .defeatBoss && bossDefeated {
             win()
@@ -415,7 +442,12 @@ final class GameScene: SKScene {
             let defeated = enemy.stomp()
             alina.applyBounce()
             ChiptuneEngine.shared.play(.stomp)
-            GameGraphics.burst(at: enemy.position, in: builtLevel?.worldNode ?? self, colors: [SKColor(hex: 0x5E52A0), .white], count: 8)
+            let world = builtLevel?.worldNode ?? self
+            let top = CGPoint(x: enemy.position.x, y: enemy.position.y + enemy.size.height / 2)
+            GameGraphics.impact(at: top, in: world)
+            GameGraphics.ring(at: top, in: world, color: .white, size: 70)
+            GameGraphics.burst(at: top, in: world, colors: [SKColor(hex: 0x8E72D6), .white, SKColor(hex: 0xFFE9AB)], count: 12)
+            punch(stop: defeated ? 0.07 : 0.05, shake: enemy.enemyKind == .boss ? 7 : 3.5)
             if defeated {
                 petals += enemy.enemyKind == .boss ? 10 : 2
                 GameGraphics.popText(
@@ -431,12 +463,40 @@ final class GameScene: SKScene {
         }
     }
 
+    /// Impact weight: freeze for `stop` seconds and shake the camera by `shake` world units.
+    private func punch(stop: CGFloat, shake: CGFloat) {
+        hitStop = max(hitStop, stop)
+        shakeAmount = max(shakeAmount, shake)
+    }
+
+    /// A collected petal's ghost flies from the pickup up to the petal counter in the HUD.
+    private func flyToHUD(from position: CGPoint, texture: SKTexture?) {
+        guard let world = builtLevel?.worldNode else { return }
+        let visible = visibleRect
+        let start = convert(world.convert(position, to: self), to: cameraNode)
+        let ghost = SKSpriteNode(texture: texture, size: CGSize(width: 22, height: 22))
+        ghost.position = start
+        ghost.zPosition = 400
+        cameraNode.addChild(ghost)
+        // The petal pill sits near the top right of the window.
+        let target = CGPoint(x: visible.width * 0.31, y: visible.height * 0.37)
+        let path = CGMutablePath()
+        path.move(to: start)
+        path.addQuadCurve(to: target, control: CGPoint(x: (start.x + target.x) / 2 - 60, y: max(start.y, target.y) + 80))
+        let fly = SKAction.follow(path, asOffset: false, orientToPath: false, duration: 0.55)
+        fly.timingMode = .easeIn
+        ghost.run(.sequence([.group([fly, .rotate(byAngle: 6, duration: 0.55), .scale(to: 0.6, duration: 0.55)]),
+                             .fadeOut(withDuration: 0.08), .removeFromParent()]))
+    }
+
     private func takeHit(fromX x: CGFloat) {
         guard alina.hurtCooldown <= 0 else { return }
         hits += 1
         ChiptuneEngine.shared.play(.hurt)
         let shielded = alina.absorbHit()
         alina.knockback(from: x)
+        punch(stop: 0.09, shake: 7)
+        GameGraphics.impact(at: alina.position, in: builtLevel?.worldNode ?? self, size: 46)
         if !shielded {
             loseHeart()
         }
@@ -460,19 +520,27 @@ final class GameScene: SKScene {
             case .coin:
                 petals += 1
                 ChiptuneEngine.shared.play(.petal)
-                GameGraphics.burst(at: item.position, in: world, colors: [SKColor(hex: 0xFF8DBE), SKColor(hex: 0xF6C343)], count: 6, speed: 90)
+                GameGraphics.ring(at: item.position, in: world, color: SKColor(hex: 0xFFC2DE), size: 40, duration: 0.25)
+                GameGraphics.twinkles(at: item.position, in: world, color: SKColor(hex: 0xFFE9AB), count: 2, spread: 12)
+                flyToHUD(from: item.position, texture: PixelArt.texture(.petal))
             case .crystal:
                 shards += 1
                 ChiptuneEngine.shared.play(.shard)
-                GameGraphics.burst(at: item.position, in: world, colors: [SKColor(hex: 0xF6C343), .white], count: 12)
+                GameGraphics.burst(at: item.position, in: world, colors: [SKColor(hex: 0xF6C343), .white, SKColor(hex: 0xC3A8FF)], count: 16)
+                GameGraphics.ring(at: item.position, in: world, color: SKColor(hex: 0xFFE9AB), size: 90, duration: 0.4)
+                punch(stop: 0.05, shake: 2)
                 GameGraphics.popText("Shard \(shards)", color: SKColor(hex: 0xA86A00), at: CGPoint(x: item.position.x, y: item.position.y + 26), in: world)
             case .sunbloom:
                 alina.grantBloom()
                 ChiptuneEngine.shared.play(.powerUp)
+                GameGraphics.ring(at: item.position, in: world, color: SKColor(hex: 0xFFE9AB), size: 100, duration: 0.45)
+                GameGraphics.twinkles(at: item.position, in: world, color: SKColor(hex: 0xFFE9AB), count: 5, spread: 30)
                 GameGraphics.popText("Sunbloom!", color: SKColor(hex: 0xA86A00), at: CGPoint(x: item.position.x, y: item.position.y + 26), in: world)
             case .ribbon:
                 alina.grantRibbon()
                 ChiptuneEngine.shared.play(.powerUp)
+                GameGraphics.ring(at: item.position, in: world, color: SKColor(hex: 0xFFB3D6), size: 100, duration: 0.45)
+                GameGraphics.twinkles(at: item.position, in: world, color: SKColor(hex: 0xFFC2DE), count: 5, spread: 30)
                 GameGraphics.popText("Glow Ribbon!", color: SKColor(hex: 0xC13B73), at: CGPoint(x: item.position.x, y: item.position.y + 26), in: world)
             }
         }
@@ -553,10 +621,15 @@ final class GameScene: SKScene {
         targetX = mapWidth <= visible.width ? mapWidth / 2 : max(visible.width / 2, min(mapWidth - visible.width / 2, targetX))
         let targetY = max(visible.height / 2, alina.position.y + 60)
         let factor = 1.0 - exp(-10.0 * delta)
-        cameraNode.position = CGPoint(
-            x: cameraNode.position.x + (targetX - cameraNode.position.x) * factor,
-            y: cameraNode.position.y + (targetY - cameraNode.position.y) * factor
-        )
+        var base = cameraBase ?? cameraNode.position
+        base = CGPoint(x: base.x + (targetX - base.x) * factor, y: base.y + (targetY - base.y) * factor)
+        cameraBase = base
+        // Shake decays quickly; a little rotation sells it.
+        shakeAmount = max(0, shakeAmount - delta * 40)
+        let reduced = UserDefaults.standard.bool(forKey: SettingsKey.reduceMotion)
+        let s = reduced ? 0 : shakeAmount
+        cameraNode.position = CGPoint(x: base.x + .random(in: -s...max(-s, s)), y: base.y + .random(in: -s...max(-s, s)))
+        cameraNode.zRotation = s > 0 ? .random(in: -0.004...0.004) * s : 0
     }
 
     // MARK: HUD

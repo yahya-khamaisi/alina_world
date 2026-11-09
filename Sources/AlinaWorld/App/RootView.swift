@@ -67,8 +67,9 @@ struct RootView: View {
                     )
                 }
             }
-            .transition(.opacity)
-            .animation(.easeInOut(duration: 0.25), value: router.routeKey)
+            // Screens ease in with a slight settle, like turning a storybook page.
+            .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 1.035)), removal: .opacity))
+            .animation(.easeOut(duration: 0.32), value: router.routeKey)
         }
         .background(WindowAccessor())
         .onChange(of: router.routeKey, initial: true) { playMusic(for: router.route) }

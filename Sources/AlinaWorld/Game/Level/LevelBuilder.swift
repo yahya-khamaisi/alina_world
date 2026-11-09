@@ -40,6 +40,7 @@ final class LevelBuilder {
         var flagNode: SKNode?
         var crawlerCount = 0
         let spikyEnabled = mission.id >= 10
+        var surfaceByColumn: [Int: Int] = [:]
 
         for row in 0..<map.height {
             for col in 0..<map.width {
@@ -50,7 +51,9 @@ final class LevelBuilder {
                 switch kind {
                 case .solid, .ground, .brick, .question, .pipe, .spring:
                     let topExposed = !map.isSolid(map.kind(at: col, row: row - 1))
-                    let block = BlockNode(kind: blockKind(for: kind), theme: theme, topExposed: topExposed)
+                    if topExposed { surfaceByColumn[col] = row }
+                    let depth = max(0, row - (surfaceByColumn[col] ?? row) - 1)
+                    let block = BlockNode(kind: blockKind(for: kind), theme: theme, topExposed: topExposed, artVariant: col % 8 + (depth % 3) * 8)
                     block.position = center
                     worldNode.addChild(block)
                 case .coin:
@@ -91,7 +94,11 @@ final class LevelBuilder {
                 case .slopeUpRight, .slopeUpLeft, .slopeDownRight, .slopeDownLeft:
                     worldNode.addChild(createSlopeNode(kind: kind, rect: rect, theme: theme))
                 case .platform:
-                    let pad = GameGraphics.makeLeafPad(theme: theme)
+                    let pad = GameGraphics.makeLeafPad(
+                        theme: theme,
+                        joinsLeft: map.kind(at: col - 1, row: row) == .platform,
+                        joinsRight: map.kind(at: col + 1, row: row) == .platform
+                    )
                     pad.position = CGPoint(x: center.x, y: rect.maxY)
                     pad.zPosition = 1
                     worldNode.addChild(pad)
@@ -124,7 +131,8 @@ final class LevelBuilder {
             enemies.append(enemy)
         }
 
-        addScenery(to: worldNode, map: map, theme: theme, seed: mission.layoutSeed)
+        TerrainEdges.decorate(worldNode, map: map, theme: theme)
+        addScenery(to: worldNode, map: map, theme: theme, seed: mission.layoutSeed, weather: mission.weather)
 
         return BuiltLevel(
             map: map,
@@ -168,34 +176,53 @@ final class LevelBuilder {
         return GameConstants.tileSize * 2
     }
 
-    /// Trees, bushes and flowers planted behind the tiles on exposed ground.
-    private static func addScenery(to worldNode: SKNode, map: TileMap, theme: WorldTheme, seed: Int) {
+    /// Blossom trees, flowering bushes, boulders, fences and flowers planted behind the tiles on exposed ground.
+    private static func addScenery(to worldNode: SKNode, map: TileMap, theme: WorldTheme, seed: Int, weather: MissionWeather) {
         var rng = SeededRNG(seed: UInt64(seed) &* 2654435761)
-        var col = 4
+        let px = GameConstants.tilePixel
+        var col = 3
         while col < map.width - 3 {
             guard let row = surfaceRow(in: map, col: col) else { col += 1; continue }
             let rect = map.tileRect(col: col, row: row)
             let roll = rng.next() % 100
-            let clear = (1...3).allSatisfy { map.kind(at: col, row: row - $0) == .empty }
+            let clear = (1...4).allSatisfy { map.kind(at: col, row: row - $0) == .empty }
+            let flat = (col - 1...col + 2).allSatisfy { surfaceRow(in: map, col: $0) == row }
 
-            let node: SKSpriteNode?
-            if roll < 14 && clear && surfaceRow(in: map, col: col + 1) == row {
-                node = PixelArt.node(.tree, theme: theme, scale: 4)
-                col += 4
-            } else if roll < 30 {
-                node = PixelArt.node(.bush, theme: theme, scale: 3)
+            var prop: (Props.Kind, CGFloat, CGFloat)?
+            if roll < 12 && clear && flat {
+                prop = (.tree, 0, -2)
+                col += 6
+            } else if roll < 24 {
+                prop = (.bush, 0, -2)
                 col += 2
-            } else if roll < 52 {
-                node = PixelArt.node(.flower, theme: theme, scale: 3)
+            } else if roll < 32 && flat {
+                prop = (.fence, 0, -2)
+                col += 3
+            } else if roll < 42 {
+                prop = (.rock, 0, -4)
+                col += 2
+            } else if roll < 64 {
+                prop = (.flowers, 0, -2)
                 col += 1
             } else {
-                node = nil
                 col += 1
             }
-            if let node {
+            if let (kind, dx, dy) = prop {
+                let texture = SKTexture(cgImage: IllustratedArt.prop(kind, theme: theme, variant: Int(rng.next() % 3)))
+                texture.filteringMode = .linear
+                let logical = IllustratedArt.propSize(kind)
+                let node = SKSpriteNode(texture: texture, size: CGSize(width: logical.width * px, height: logical.height * px))
                 node.anchorPoint = CGPoint(x: 0.5, y: 0)
-                node.position = CGPoint(x: rect.midX, y: rect.minY - 2)
-                node.zPosition = -2
+                node.position = CGPoint(x: rect.midX + dx, y: rect.minY + dy)
+                node.zPosition = kind == .tree ? -3 : -2
+                node.xScale = rng.next() % 2 == 0 ? 1 : -1
+                if !UserDefaults.standard.bool(forKey: SettingsKey.reduceMotion), kind != .rock && kind != .fence {
+                    let amplitude = (kind == .tree ? 0.012 : 0.026) * (0.4 + weather.wind)
+                    let duration = 1.7 + Double(rng.next() % 10) / 10
+                    let sway = SKAction.sequence([.rotate(toAngle: amplitude, duration: duration), .rotate(toAngle: -amplitude, duration: duration)])
+                    sway.timingMode = .easeInEaseOut
+                    node.run(.repeatForever(sway), withKey: "windSway")
+                }
                 worldNode.addChild(node)
             }
         }

@@ -4,32 +4,32 @@ import SpriteKit
 enum GameGraphics {
     static let popFont = "AvenirNext-Heavy"
 
-    static func makeBlockNode(kind: BlockKind, theme: WorldTheme, topExposed: Bool) -> SKSpriteNode {
+    static func makeBlockNode(kind: BlockKind, theme: WorldTheme, topExposed: Bool, artVariant: Int = 0) -> SKSpriteNode {
         let sprite: PixelSprite
         switch kind {
-        case .solid: sprite = .stone
+        case .solid: sprite = topExposed ? .groundTop : .groundFill
         case .ground: sprite = topExposed ? .groundTop : .groundFill
         case .brick: sprite = .mossbrick
         case .question: sprite = .bloomBlock
         case .pipe: sprite = .log
         case .spring: sprite = .springShell
         }
-        return PixelArt.node(sprite, theme: theme, scale: GameConstants.tilePixel)
+        return PixelArt.node(sprite, theme: theme, overrides: ["#": UInt32(artVariant)], scale: GameConstants.tilePixel)
     }
 
     static func makeBeacon() -> SKNode {
         let container = SKNode()
-        let glow = SKShapeNode(circleOfRadius: 26)
-        glow.fillColor = SKColor(hex: 0xFFE98A, alpha: 0.35)
+        let glow = SKShapeNode(circleOfRadius: 30)
+        glow.fillColor = SKColor(hex: 0xFFE98A, alpha: 0.4)
         glow.strokeColor = .clear
-        glow.position = CGPoint(x: 0, y: 46)
+        glow.position = CGPoint(x: -7, y: 42)
         glow.run(.repeatForever(.sequence([
             .scale(to: 1.15, duration: 0.8),
             .scale(to: 0.9, duration: 0.8)
         ])))
         container.addChild(glow)
 
-        let lantern = PixelArt.node(.beacon, scale: 4)
+        let lantern = PixelArt.node(.beacon, scale: 2)
         lantern.anchorPoint = CGPoint(x: 0.5, y: 0)
         lantern.position = CGPoint(x: 0, y: -16)
         container.addChild(lantern)
@@ -40,8 +40,14 @@ enum GameGraphics {
         PixelArt.node(.thorns, theme: theme, scale: GameConstants.tilePixel)
     }
 
-    static func makeLeafPad(theme: WorldTheme) -> SKSpriteNode {
-        let node = PixelArt.node(.leafPad, theme: theme, scale: GameConstants.tilePixel)
+    static func makeLeafPad(theme: WorldTheme, joinsLeft: Bool, joinsRight: Bool) -> SKSpriteNode {
+        let sprite: PixelSprite = switch (joinsLeft, joinsRight) {
+        case (true, true): .leafPad
+        case (true, false): .leafPadRight
+        case (false, true): .leafPadLeft
+        case (false, false): .leafPadSingle
+        }
+        let node = PixelArt.node(sprite, theme: theme, scale: GameConstants.tilePixel)
         node.anchorPoint = CGPoint(x: 0.5, y: 1)
         return node
     }
@@ -51,6 +57,7 @@ enum GameGraphics {
     }
 
     /// Floating score text with a white pill behind it, matching the HUD.
+    /// Floating score text on a plum-outlined cream pill: springs in with overshoot, drifts up, fades.
     static func popText(_ text: String, color: SKColor, at position: CGPoint, in parent: SKNode) {
         let label = SKLabelNode(fontNamed: popFont)
         label.text = text
@@ -58,36 +65,127 @@ enum GameGraphics {
         label.fontColor = color
         label.verticalAlignmentMode = .center
 
-        let width = label.frame.width + 14
-        let pill = SKShapeNode(rectOf: CGSize(width: width, height: 22), cornerRadius: 7)
-        pill.fillColor = .white
-        pill.strokeColor = .clear
+        let width = label.frame.width + 18
+        let pill = SKShapeNode(rectOf: CGSize(width: width, height: 24), cornerRadius: 12)
+        pill.fillColor = SKColor(hex: 0xFFF4E6)
+        pill.strokeColor = SKColor(hex: 0x4B1C3A)
+        pill.lineWidth = 2
         pill.position = position
         pill.zPosition = 40
+        pill.setScale(0.2)
         pill.addChild(label)
         parent.addChild(pill)
+        let grow = SKAction.scale(to: 1.25, duration: 0.1)
+        grow.timingMode = .easeOut
+        let settle = SKAction.scale(to: 1, duration: 0.12)
+        settle.timingMode = .easeInEaseOut
+        let rise = SKAction.moveBy(x: 0, y: 38, duration: 0.75)
+        rise.timingMode = .easeOut
         pill.run(.sequence([
-            .group([.moveBy(x: 0, y: 34, duration: 0.6), .sequence([.wait(forDuration: 0.35), .fadeOut(withDuration: 0.25)])]),
+            .group([.sequence([grow, settle]), rise, .sequence([.wait(forDuration: 0.5), .fadeOut(withDuration: 0.25)])]),
             .removeFromParent()
         ]))
     }
 
-    /// Square pixel particles flying outward — stomps, collects and brick breaks.
+    /// Double jump: a ring of soft pink puffs that blooms under the boots, with a few twinkles.
+    static func sparklePuff(at position: CGPoint, in parent: SKNode) {
+        ring(at: position, in: parent, color: SKColor(hex: 0xFFB3D6), size: 46, duration: 0.35)
+        for i in 0..<7 {
+            let puff = SKSpriteNode(texture: EffectTextures.softDot, size: CGSize(width: 18, height: 18))
+            puff.color = i.isMultiple(of: 2) ? SKColor(hex: 0xFFC2DE) : .white
+            puff.colorBlendFactor = 1
+            puff.position = position
+            puff.zPosition = 9
+            puff.setScale(0.4)
+            parent.addChild(puff)
+            let angle = CGFloat.pi + CGFloat(i) / 6 * .pi
+            let out = SKAction.moveBy(x: cos(angle) * 22, y: sin(angle) * 10 - 6, duration: 0.4)
+            out.timingMode = .easeOut
+            puff.run(.sequence([
+                .group([out, .scale(to: 1.2, duration: 0.4), .sequence([.wait(forDuration: 0.15), .fadeOut(withDuration: 0.25)])]),
+                .removeFromParent()
+            ]))
+        }
+        twinkles(at: position, in: parent, color: SKColor(hex: 0xFFE9AB), count: 3, spread: 26)
+    }
+
+    /// Soft dots and star sparkles thrown outward on a little arc, spinning and shrinking —
+    /// stomps, collects and brick breaks.
     static func burst(at position: CGPoint, in parent: SKNode, colors: [SKColor], count: Int = 10, speed: CGFloat = 140) {
         for i in 0..<count {
-            let pixel = SKSpriteNode(texture: PixelArt.squareTexture, size: CGSize(width: 6, height: 6))
-            pixel.color = colors[i % colors.count]
-            pixel.colorBlendFactor = 1
-            pixel.position = position
-            pixel.zPosition = 30
-            parent.addChild(pixel)
+            let star = i.isMultiple(of: 3)
+            let size = star ? CGFloat.random(in: 9...14) : CGFloat.random(in: 6...11)
+            let bit = SKSpriteNode(texture: star ? EffectTextures.sparkle : EffectTextures.softDot, size: CGSize(width: size, height: size))
+            bit.color = colors[i % colors.count]
+            bit.colorBlendFactor = 1
+            bit.position = position
+            bit.zPosition = 30
+            bit.zRotation = .random(in: 0...(.pi))
+            parent.addChild(bit)
             let angle = CGFloat(i) / CGFloat(count) * .pi * 2 + .random(in: -0.3...0.3)
-            let distance = speed * .random(in: 0.5...1)
-            pixel.run(.sequence([
-                .group([
-                    .moveBy(x: cos(angle) * distance * 0.5, y: sin(angle) * distance * 0.5 + 20, duration: 0.45),
-                    .fadeOut(withDuration: 0.45)
-                ]),
+            let distance = speed * .random(in: 0.45...0.8)
+            let dx = cos(angle) * distance, dy = sin(angle) * distance
+            // Arc: out fast, then sag under gravity.
+            let path = CGMutablePath()
+            path.move(to: position)
+            path.addQuadCurve(to: CGPoint(x: position.x + dx, y: position.y + dy * 0.6 - 18),
+                              control: CGPoint(x: position.x + dx * 0.6, y: position.y + dy * 0.9 + 22))
+            let fly = SKAction.follow(path, asOffset: false, orientToPath: false, duration: 0.55)
+            fly.timingMode = .easeOut
+            bit.run(.sequence([
+                .group([fly, .rotate(byAngle: .random(in: -4...4), duration: 0.55), .scale(to: 0.2, duration: 0.55),
+                        .sequence([.wait(forDuration: 0.3), .fadeOut(withDuration: 0.25)])]),
+                .removeFromParent()
+            ]))
+        }
+    }
+
+    /// Expanding shockwave ring.
+    static func ring(at position: CGPoint, in parent: SKNode, color: SKColor, size: CGFloat, duration: TimeInterval = 0.3) {
+        let ring = SKSpriteNode(texture: EffectTextures.ring, size: CGSize(width: size, height: size))
+        ring.color = color
+        ring.colorBlendFactor = 1
+        ring.position = position
+        ring.zPosition = 29
+        ring.setScale(0.3)
+        parent.addChild(ring)
+        let grow = SKAction.scale(to: 1, duration: duration)
+        grow.timingMode = .easeOut
+        ring.run(.sequence([.group([grow, .fadeOut(withDuration: duration)]), .removeFromParent()]))
+    }
+
+    /// Bright star flash at an impact point, a few frames long.
+    static func impact(at position: CGPoint, in parent: SKNode, size: CGFloat = 54) {
+        let flash = SKSpriteNode(texture: EffectTextures.sparkle, size: CGSize(width: size, height: size))
+        flash.position = position
+        flash.zPosition = 31
+        flash.setScale(0.3)
+        flash.blendMode = .add
+        parent.addChild(flash)
+        let glow = SKSpriteNode(texture: EffectTextures.glow, size: CGSize(width: size * 1.4, height: size * 1.4))
+        glow.position = position
+        glow.zPosition = 30
+        glow.alpha = 0.8
+        parent.addChild(glow)
+        flash.run(.sequence([.group([.scale(to: 1, duration: 0.07), .rotate(byAngle: 0.4, duration: 0.18)]),
+                             .group([.scale(to: 1.3, duration: 0.11), .fadeOut(withDuration: 0.11)]), .removeFromParent()]))
+        glow.run(.sequence([.group([.scale(to: 1.3, duration: 0.18), .fadeOut(withDuration: 0.18)]), .removeFromParent()]))
+    }
+
+    /// A few four-point twinkles that pop and fade around a point.
+    static func twinkles(at position: CGPoint, in parent: SKNode, color: SKColor, count: Int, spread: CGFloat) {
+        for i in 0..<count {
+            let star = SKSpriteNode(texture: EffectTextures.sparkle, size: CGSize(width: 12, height: 12))
+            star.color = color
+            star.colorBlendFactor = 0.6
+            star.position = CGPoint(x: position.x + .random(in: -spread...spread), y: position.y + .random(in: -spread * 0.4...spread))
+            star.zPosition = 32
+            star.setScale(0)
+            parent.addChild(star)
+            star.run(.sequence([
+                .wait(forDuration: Double(i) * 0.06),
+                .scale(to: 1.1, duration: 0.1), .scale(to: 0.8, duration: 0.08),
+                .group([.fadeOut(withDuration: 0.25), .rotate(byAngle: 1, duration: 0.25)]),
                 .removeFromParent()
             ]))
         }

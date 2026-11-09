@@ -11,7 +11,7 @@ struct StoryBeatView: View {
 
     var body: some View {
         ZStack {
-            PixelBackdrop(theme: theme, dense: theme.key == "grove")
+            PixelBackdrop(theme: theme, dense: theme.key == "grove", weather: mission.weather)
                 .ignoresSafeArea()
             Palette.cream.opacity(0.4).ignoresSafeArea()
 
@@ -45,6 +45,11 @@ struct StoryBeatView: View {
 
         return VStack(spacing: 22) {
             preview
+            HStack {
+                Text(theme.name).font(.rounded(20, .heavy)).foregroundStyle(Palette.plum)
+                Spacer()
+                WeatherBadge(weather: mission.weather)
+            }
 
             HStack(spacing: Space.m) {
                 goalChip(earned: stars[0])
@@ -82,7 +87,7 @@ struct StoryBeatView: View {
                     Text("Go!").font(.rounded(30, .heavy))
                 }
             }
-            .buttonStyle(TileButtonStyle(kind: .primary, size: 72, focused: true))
+            .buttonStyle(StorybookButtonStyle(width: 300, height: 64, focused: true))
             .accessibilityLabel("Start mission")
         }
         .frame(width: 720)
@@ -92,7 +97,7 @@ struct StoryBeatView: View {
     private var preview: some View {
         ZStack(alignment: .topLeading) {
             ZStack(alignment: .bottomLeading) {
-                PixelBackdrop(theme: theme, dense: theme.key == "grove", groundHeight: 56, sunPosition: 0.8)
+                PixelBackdrop(theme: theme, dense: theme.key == "grove", groundHeight: 56, sunPosition: 0.8, weather: mission.weather)
                     .frame(height: 260)
                 HStack(alignment: .bottom, spacing: 0) {
                     PixelImage(sprite: .alinaRun, scale: 4).padding(.leading, 56)

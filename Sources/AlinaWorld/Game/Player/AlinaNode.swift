@@ -47,38 +47,84 @@ final class AlinaNode: SKNode {
     private let visualRoot = SKNode()
     private let body: SKSpriteNode
     private let ribbonNode: SKSpriteNode
-    private let aura: SKShapeNode
+    /// The long glowing ribbon held overhead while gliding.
+    private let glideRibbon: SKSpriteNode
+    private let aura: SKSpriteNode
+    /// Shows the double-jump pose for a moment after the air jump fires.
+    private var doubleJumpTimer: CGFloat = 0
     private var textures: [PixelSprite: SKTexture] = [:]
+    /// Cut-out puppet with procedural animation; replaces the painted frames once `AlinaRig.png` is bundled.
+    private var rig: AlinaRig?
     private var dust: SKEmitterNode?
+    private let groundShadow = SKSpriteNode(texture: EffectTextures.glow, size: CGSize(width: 28, height: 7))
 
-    private static let pixel: CGFloat = 2
-    private static let bloomOverrides: [Character: UInt32] = ["K": 0xF6C343, "D": 0xD9901A]
+    /// World units per art pixel. The 24 × 33 sprite stands about 50 units tall over the 28-unit hitbox
+    /// (the chibi head rises above it, like the v3 mockups).
+    private static let pixel: CGFloat = 1.5
+    private static let bloomOverrides = AlinaArt.bloomOverrides
+    private static let doubleJumpDuration: CGFloat = 0.42
+    /// Centre of the body sprite so the boots sit on the hitbox floor and the torso is over the hitbox.
+    private static let bodyOffset = CGPoint(x: -1.5, y: -GameConstants.playerHeight / 2 + CGFloat(AlinaArt.size.height) * pixel / 2)
 
     override init() {
         body = PixelArt.node(.alinaIdle, scale: Self.pixel)
         ribbonNode = PixelArt.node(.ribbon, scale: 2)
-        aura = SKShapeNode(circleOfRadius: 24)
+        glideRibbon = SKSpriteNode(
+            texture: AlinaEffects.ribbonFrames[0],
+            size: CGSize(width: CGFloat(AlinaEffects.ribbonSize.width) * Self.pixel, height: CGFloat(AlinaEffects.ribbonSize.height) * Self.pixel)
+        )
+        let glowContext = CGContext(data: nil, width: 128, height: 128, bitsPerComponent: 8, bytesPerRow: 0,
+                                    space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        let glow = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
+                              colors: [Drawing.color(0xFFE99A, alpha: 0.38), Drawing.color(0xFFE99A, alpha: 0)] as CFArray,
+                              locations: [0, 1])!
+        glowContext.drawRadialGradient(glow, startCenter: CGPoint(x: 64, y: 64), startRadius: 8,
+                                       endCenter: CGPoint(x: 64, y: 64), endRadius: 64, options: [])
+        aura = SKSpriteNode(texture: SKTexture(cgImage: glowContext.makeImage()!), size: CGSize(width: 64, height: 64))
         super.init()
         name = "alina"
         zPosition = 10
 
-        // Sprite is 36 pt tall over a 28 pt hitbox: lift it so the boots sit on the hitbox floor.
-        visualRoot.position = CGPoint(x: 0, y: 4)
+        groundShadow.color = SKColor(hex: 0x35243A)
+        groundShadow.colorBlendFactor = 1
+        groundShadow.alpha = 0.24
+        groundShadow.position = CGPoint(x: 0, y: -13)
+        groundShadow.zPosition = -1
+        addChild(groundShadow)
         addChild(visualRoot)
+        body.position = Self.bodyOffset
 
-        aura.fillColor = SKColor(hex: 0xFFE98A, alpha: 0.3)
-        aura.strokeColor = .clear
         aura.isHidden = true
         aura.zPosition = -2
         aura.run(.repeatForever(.sequence([.scale(to: 1.1, duration: 0.5), .scale(to: 0.9, duration: 0.5)])))
         visualRoot.addChild(aura)
 
-        ribbonNode.position = CGPoint(x: -10, y: 2)
+        ribbonNode.position = CGPoint(x: -12, y: 4)
         ribbonNode.zPosition = -1
         ribbonNode.isHidden = true
         visualRoot.addChild(ribbonNode)
 
+        // Pin the ribbon's handle pixel to the raised hand in the glide frame (art pixel 22.5, 17.5).
+        let handle = AlinaEffects.ribbonHandle
+        glideRibbon.anchorPoint = CGPoint(
+            x: handle.x / CGFloat(AlinaEffects.ribbonSize.width),
+            y: 1 - handle.y / CGFloat(AlinaEffects.ribbonSize.height)
+        )
+        glideRibbon.position = CGPoint(
+            x: Self.bodyOffset.x + (22.5 - CGFloat(AlinaArt.size.width) / 2) * Self.pixel,
+            y: Self.bodyOffset.y + (CGFloat(AlinaArt.size.height) / 2 - 17.5) * Self.pixel
+        )
+        glideRibbon.zPosition = -1
+        glideRibbon.isHidden = true
+        visualRoot.addChild(glideRibbon)
+
         visualRoot.addChild(body)
+        if AlinaRig.isAvailable {
+            let rig = AlinaRig(height: 52, feetY: -GameConstants.playerHeight / 2)
+            visualRoot.addChild(rig)
+            self.rig = rig
+            body.isHidden = true
+        }
         reloadTextures()
         setupDust()
     }
@@ -88,7 +134,7 @@ final class AlinaNode: SKNode {
 
     private func reloadTextures() {
         let overrides = bloom ? Self.bloomOverrides : [:]
-        for sprite in [PixelSprite.alinaIdle, .alinaBlink, .alinaRun, .alinaJump, .alinaFall] {
+        for sprite in [PixelSprite.alinaIdle, .alinaBlink, .alinaRun, .alinaRunB, .alinaJump, .alinaDoubleJump, .alinaFall, .alinaGlide] {
             textures[sprite] = PixelArt.texture(sprite, overrides: overrides)
         }
         body.texture = textures[.alinaIdle]
@@ -97,7 +143,7 @@ final class AlinaNode: SKNode {
 
     private func setupDust() {
         let emitter = SKEmitterNode()
-        emitter.particleTexture = PixelArt.squareTexture
+        emitter.particleTexture = EffectTextures.softDot
         emitter.particleBirthRate = 0
         emitter.particleLifetime = 0.35
         emitter.particlePositionRange = CGVector(dx: 10, dy: 2)
@@ -107,8 +153,9 @@ final class AlinaNode: SKNode {
         emitter.particleSpeedRange = 20
         emitter.particleAlpha = 0.8
         emitter.particleAlphaSpeed = -2.2
-        emitter.particleSize = CGSize(width: 4, height: 4)
-        emitter.particleColor = SKColor(white: 1, alpha: 1)
+        emitter.particleSize = CGSize(width: 9, height: 9)
+        emitter.particleScaleSpeed = 1.6
+        emitter.particleColor = SKColor(hex: 0xF6E6D2)
         emitter.particleColorBlendFactor = 1
         emitter.position = CGPoint(x: 0, y: -14)
         emitter.zPosition = -1
@@ -230,6 +277,7 @@ final class AlinaNode: SKNode {
             velocityY = jumpVelocity * 0.9
             jumpBufferTimer = 0
             didAirJump = true
+            doubleJumpTimer = Self.doubleJumpDuration
             currentState = .fall
             setState(.jump)
             ChiptuneEngine.shared.play(.doubleJump)
@@ -295,11 +343,11 @@ final class AlinaNode: SKNode {
         switch newState {
         case .land:
             puffDust(rate: 600)
-            body.run(.sequence([.scaleY(to: 0.8, duration: 0.05), .scaleY(to: 1.0, duration: 0.1)]))
+            body.run(.sequence([.scaleY(to: 0.8, duration: 0.05), .scaleY(to: 1.0, duration: 0.1)]), withKey: "pose")
         case .jump:
-            body.run(.sequence([.scaleY(to: 1.15, duration: 0.06), .scaleY(to: 1.0, duration: 0.1)]))
+            body.run(.sequence([.scaleY(to: 1.15, duration: 0.06), .scaleY(to: 1.0, duration: 0.1)]), withKey: "pose")
         case .bounce:
-            body.run(.sequence([.scaleY(to: 0.75, duration: 0.05), .scaleY(to: 1.1, duration: 0.1), .scaleY(to: 1.0, duration: 0.05)]))
+            body.run(.sequence([.scaleY(to: 0.75, duration: 0.05), .scaleY(to: 1.1, duration: 0.1), .scaleY(to: 1.0, duration: 0.05)]), withKey: "pose")
         case .skid:
             puffDust(rate: 400)
         default:
@@ -323,28 +371,58 @@ final class AlinaNode: SKNode {
             if blinkTimer < 0 { blinkTimer = .random(in: 2.2...4.0) }
             texture = blinkTimer < 0.12 ? textures[.alinaBlink] : textures[.alinaIdle]
         case .walk, .run, .skid:
-            let frameTime: CGFloat = currentState == .run ? 0.08 : 0.13
-            if frameTimer > frameTime {
-                frameTimer = 0
-                frameIndex = (frameIndex + 1) % 2
-                if onGround && frameIndex == 0 && abs(velocityX) > 120 { puffDust(rate: 160) }
+            let frames = CharacterAtlas.runFrames
+            let count = frames.isEmpty ? 2 : frames.count
+            let frameTime = max(0.045, min(0.12, 14 / max(abs(velocityX), 80)))
+            if frameTimer >= frameTime {
+                frameIndex = (frameIndex + Int(frameTimer / frameTime)) % count
+                frameTimer = frameTimer.truncatingRemainder(dividingBy: frameTime)
+                if onGround && frameIndex.isMultiple(of: max(1, count / 2)) && abs(velocityX) > 120 { puffDust(rate: 110) }
             }
-            texture = frameIndex == 0 ? textures[.alinaRun] : textures[.alinaIdle]
+            texture = frames.isEmpty ? (frameIndex == 0 ? textures[.alinaRun] : textures[.alinaRunB]) : frames[frameIndex]
         case .jump, .bounce:
-            texture = textures[.alinaJump]
-        case .fall, .glide:
-            texture = textures[.alinaFall]
+            texture = doubleJumpTimer > 0 ? textures[.alinaDoubleJump] : textures[.alinaJump]
+        case .fall:
+            texture = doubleJumpTimer > 0 ? textures[.alinaDoubleJump] : textures[.alinaFall]
+        case .glide:
+            texture = textures[.alinaGlide]
         }
-        if let texture, body.texture !== texture { body.texture = texture }
+        if doubleJumpTimer > 0 { doubleJumpTimer -= dt }
+        if let texture, body.texture !== texture {
+            body.texture = texture
+            body.size.width = currentState == .glide ? 30 * Self.pixel : 24 * Self.pixel
+        }
 
-        if currentState == .glide {
-            ribbonNode.zRotation = sin(stateTimer * 18) * 0.25
-            ribbonNode.position = CGPoint(x: -12, y: 10)
-        } else {
-            ribbonNode.zRotation = 0
-            ribbonNode.position = CGPoint(x: -10, y: 2)
+        let gliding = currentState == .glide
+        // The illustrated glide pose already includes the ribbon; only legacy fallback art needs the overlay.
+        glideRibbon.isHidden = !gliding || CharacterAtlas.image(.alinaGlide) != nil
+        ribbonNode.isHidden = !hasRibbon || gliding
+        if gliding {
+            let frames = AlinaEffects.ribbonFrames
+            let frame = frames[Int(stateTimer * 12) % frames.count]
+            if glideRibbon.texture !== frame { glideRibbon.texture = frame }
         }
+        groundShadow.isHidden = !onGround
+        let breathing = currentState == .idle ? sin(stateTimer * 2.2) : 0
+        let floating = gliding ? sin(stateTimer * 3.2) : 0
+        body.position = CGPoint(x: Self.bodyOffset.x + floating * 0.5, y: Self.bodyOffset.y + breathing * 0.25 + floating * 0.65)
+        if body.action(forKey: "pose") == nil { body.yScale = 1 + breathing * 0.008 }
+        body.zRotation = gliding ? floating * 0.025 : 0
         visualRoot.zRotation = currentState == .skid ? (facingRight ? -0.12 : 0.12) : 0
+
+        if let rig {
+            body.isHidden = true
+            glideRibbon.isHidden = true
+            visualRoot.zRotation = 0
+            rig.update(AlinaRig.Motion(
+                state: currentState,
+                velocity: CGVector(dx: velocityX, dy: velocityY),
+                onGround: onGround,
+                bloom: bloom,
+                flip: doubleJumpTimer > 0 ? 1 - doubleJumpTimer / Self.doubleJumpDuration : nil,
+                dt: dt
+            ))
+        }
     }
 
     func applyBounce(velocity: CGFloat = GameConstants.stompBounceVelocity) {

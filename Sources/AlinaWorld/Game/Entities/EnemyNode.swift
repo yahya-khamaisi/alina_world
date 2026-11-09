@@ -23,6 +23,8 @@ final class EnemyNode: SKNode {
     private(set) var stompHits = 0
     private var age: CGFloat = 0
     private let visualNode: SKSpriteNode
+    /// Cut-out puppet used once `CreatureRig.png` is bundled; `visualNode` then only sets the size.
+    private var rig: CreatureRig?
 
     init(kind: EnemyKind, theme: WorldTheme, patrol: Int = 80) {
         enemyKind = kind
@@ -56,7 +58,21 @@ final class EnemyNode: SKNode {
         zPosition = 3
         addChild(visualNode)
 
-        if frames.count > 1 {
+        if CreatureRig.isAvailable {
+            let (species, widthFactor): (CreatureRig.Species, CGFloat) = switch frames[0] {
+            case .frostpuff: (.frostpuff, 0.86)
+            case .shellcrab: (.shellcrab, 0.72)
+            case .starwisp: (.starwisp, 0.95)
+            case .thornbeetle: (.thornbeetle, 0.95)
+            case .mothwisp: (.mothwisp, 0.55)
+            case .guardian: (.guardian, 0.9)
+            default: (.gloomling, 0.86)
+            }
+            let rig = CreatureRig(species: species, width: visualNode.size.width * widthFactor, floorY: -visualNode.size.height / 2)
+            addChild(rig)
+            self.rig = rig
+            visualNode.isHidden = true
+        } else if frames.count > 1 {
             let textures = frames.map { PixelArt.texture($0, theme: theme) }
             visualNode.run(.repeatForever(.animate(with: textures, timePerFrame: kind == .flyer ? 0.14 : 0.24)))
         } else {
@@ -95,6 +111,10 @@ final class EnemyNode: SKNode {
         age += dt
         position.x += direction * moveSpeed * dt
         visualNode.xScale = direction > 0 ? -1 : 1
+        if let rig {
+            rig.xScale = visualNode.xScale
+            rig.update(dt: dt, speed: moveSpeed)
+        }
 
         if position.x < originX - patrolDistance {
             direction = 1
@@ -119,6 +139,7 @@ final class EnemyNode: SKNode {
             .scale(to: 1.0, duration: 0.08),
             .colorize(withColorBlendFactor: 0, duration: 0.1)
         ]))
+        rig?.hit()
         moveSpeed += 25
         return false
     }
@@ -126,6 +147,7 @@ final class EnemyNode: SKNode {
     func defeat() {
         alive = false
         removeAllActions()
+        rig?.squashFlat()
         run(.sequence([
             .group([.scaleY(to: 0.3, duration: 0.12), .moveBy(x: 0, y: -8, duration: 0.12)]),
             .fadeOut(withDuration: 0.15),

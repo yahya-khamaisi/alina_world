@@ -1,0 +1,10 @@
+Next task (art only, do NOT edit Swift code - Claude is building creature rigs in SpriteKit that will load this sheet): paint the Alina World creatures as a CUT-OUT ANIMATION PARTS SHEET so their parts can move independently. Use EXACTLY the same creature designs, colours and polished hand-painted storybook style as enemiesHD / CreaturesIllustrated.png (fuzzy purple Gloomling with glowing yellow eyes, spiked red Thornbeetle, purple Mothwisp, crowned Guardian, icy blue Frostpuff, pink Shellcrab, smiling golden Starwisp; smooth plum outlines, NOT pixel art). All parts at ONE SHARED SCALE (a Gloomling body about 300 px wide), side view facing LEFT (the direction they walk), each part complete and isolated with a little extra painted at every joint so rotated parts still overlap cleanly, genuinely transparent background, no labels, no grid lines, no shadows. STRICT 4-COLUMN by 4-ROW grid of exactly SIXTEEN parts, each centered inside its equal cell with transparent padding, nothing crossing cell borders.
+
+Row 1: (1) GLOOMLING body without feet, eyes open, grumpy; (2) the same Gloomling body with eyes squeezed shut (blink / stomped); (3) one small GLOOMLING FOOT; (4) the GUARDIAN's golden CROWN on its own.
+Row 2: (5) GUARDIAN body (big fuzzy gloomling) without feet and without crown; (6) THORNBEETLE spiked shell with head, without legs; (7) one THORNBEETLE LEG; (8) MOTHWISP fuzzy body with antennae, without wings.
+Row 3: (9) one MOTHWISP WING (fore and hind wing together as one piece, its root at the left edge); (10) FROSTPUFF body without feet; (11) one FROSTPUFF FOOT; (12) SHELLCRAB shell with crab face and body, without claws and legs.
+Row 4: (13) one SHELLCRAB CLAW; (14) one SHELLCRAB LEG; (15) STARWISP star with smiling face; (16) the same Starwisp with eyes closed (blink).
+
+Save as Sources/AlinaWorld/Resources/Art/CreatureRig.png, then run:
+python3 Scripts/prepare-atlas.py Sources/AlinaWorld/Resources/Art/CreatureRig.png Sources/AlinaWorld/Resources/Art/CreatureRigFrames.json --columns 4 --rows 4 --largest
+Add the prompt to design/art-v3/prompts.json as creatureRigHD and a line in design/art-v3/README.md. Then stop.
