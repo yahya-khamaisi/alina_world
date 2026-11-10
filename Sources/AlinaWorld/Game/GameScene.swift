@@ -124,6 +124,14 @@ final class GameScene: SKScene {
         hearts = maxHearts
         checkpoint = level.playerStart
         alina.position = level.playerStart
+        #if DEBUG
+        // Development shortcut: ALINA_START_AT_FINISH=1 starts a little before the finish lantern.
+        if ProcessInfo.processInfo.environment["ALINA_START_AT_FINISH"] != nil, let flag = level.flagNode {
+            alina.position = CGPoint(x: flag.position.x - 90, y: flag.position.y + 40)
+        }
+        // ALINA_SHARD_GUIDE=1 shows the shard guide arrow from the start.
+        if ProcessInfo.processInfo.environment["ALINA_SHARD_GUIDE"] != nil { showShardGuide = true }
+        #endif
         level.worldNode.addChild(alina)
 
         #if DEBUG
@@ -235,6 +243,7 @@ final class GameScene: SKScene {
 
         checkCollectibles()
         checkFlag(level)
+        updateShardGuide()
         checkHazards(level)
         checkFallDeath()
         updateCheckpoint()
@@ -544,11 +553,75 @@ final class GameScene: SKScene {
     }
 
     private func checkFlag(_ level: BuiltLevel) {
-        guard mission.objective == .reachFlag, let flag = level.flagNode else { return }
+        guard let flag = level.flagNode else { return }
         let flagRect = CGRect(x: flag.position.x - 16, y: flag.position.y - 16, width: 32, height: 64)
-        if alina.collisionRect.intersects(flagRect) {
+        let touching = alina.collisionRect.intersects(flagRect)
+        defer { touchingFinish = touching }
+        guard touching else { return }
+        switch mission.objective {
+        case .reachFlag:
             win()
+        case .collectN where !touchingFinish:
+            // Reached the end short of shards: say how many are left and point the way back to them.
+            let missing = mission.collectRequired - shards
+            guard missing > 0 else { return }
+            showShardGuide = true
+            GameGraphics.popText(missing == 1 ? "1 more shard!" : "\(missing) more shards!", color: SKColor(hex: 0xA86A00),
+                                 at: CGPoint(x: flag.position.x, y: flag.position.y + 60), in: level.worldNode)
+        default:
+            break
         }
+    }
+
+    // MARK: Shard guide
+
+    private var touchingFinish = false
+    /// Turned on once Alina reaches the finish of a shard mission without enough shards.
+    private var showShardGuide = false
+    private lazy var shardArrow: SKNode = {
+        let node = SKNode()
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: 30, y: 0))
+        path.addLine(to: CGPoint(x: -14, y: 22))
+        path.addQuadCurve(to: CGPoint(x: -14, y: -22), control: CGPoint(x: -3, y: 0))
+        path.closeSubpath()
+        let arrow = SKShapeNode(path: path)
+        arrow.fillColor = SKColor(hex: 0xF6C343)
+        arrow.strokeColor = SKColor(hex: 0x4B1C3A)
+        arrow.lineWidth = 4
+        arrow.lineJoin = .round
+        node.addChild(arrow)
+        let shard = SKSpriteNode(texture: PixelArt.texture(.crystal), size: CGSize(width: 40, height: 40))
+        shard.name = "icon"
+        node.addChild(shard)
+        node.zPosition = 300
+        node.isHidden = true
+        cameraNode.addChild(node)
+        node.run(.repeatForever(.sequence([.scale(to: 1.12, duration: 0.45), .scale(to: 1, duration: 0.45)])))
+        return node
+    }()
+
+    /// Keeps an arrow at the screen edge pointing to the nearest shard still out there.
+    private func updateShardGuide() {
+        guard showShardGuide, shards < mission.collectRequired else {
+            if showShardGuide { shardArrow.isHidden = true }
+            return
+        }
+        let remaining = collectibles.filter { $0.kind == .crystal && !$0.collected && $0.parent != nil }
+        guard let target = remaining.min(by: { abs($0.position.x - alina.position.x) < abs($1.position.x - alina.position.x) }),
+              let world = builtLevel?.worldNode else { shardArrow.isHidden = true; return }
+        let visible = visibleRect
+        let point = world.convert(target.position, to: self)
+        guard !visible.insetBy(dx: 40, dy: 40).contains(point) else { shardArrow.isHidden = true; return }
+        // Place the arrow on the screen edge in the target's direction (camera space).
+        let half = CGSize(width: visible.width / 2 / cameraNode.xScale - 90, height: visible.height / 2 / cameraNode.yScale - 110)
+        let d = CGVector(dx: (point.x - visible.midX) / cameraNode.xScale, dy: (point.y - visible.midY) / cameraNode.yScale)
+        let t = min(half.width / max(abs(d.dx), 1), half.height / max(abs(d.dy), 1))
+        shardArrow.isHidden = false
+        shardArrow.position = CGPoint(x: d.dx * t, y: d.dy * t)
+        let angle = atan2(d.dy, d.dx)
+        shardArrow.children.first?.zRotation = angle
+        shardArrow.childNode(withName: "icon")?.position = CGPoint(x: -cos(angle) * 50, y: -sin(angle) * 50)
     }
 
     private func checkHazards(_ level: BuiltLevel) {

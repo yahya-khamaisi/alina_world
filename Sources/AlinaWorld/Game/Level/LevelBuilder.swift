@@ -133,6 +133,15 @@ final class LevelBuilder {
             enemies.append(enemy)
         }
 
+        // Shard missions end at a lantern too, so the level has a visible finish even when shards were missed.
+        if flagNode == nil, mission.objective == .collectN, let finish = finishPoint(in: map) {
+            let beacon = GameGraphics.makeBeacon()
+            beacon.position = finish
+            beacon.zPosition = 2
+            worldNode.addChild(beacon)
+            flagNode = beacon
+        }
+
         TerrainEdges.decorate(worldNode, map: map, theme: theme)
         addScenery(to: worldNode, map: map, theme: theme, seed: mission.layoutSeed, weather: mission.weather)
 
@@ -169,6 +178,18 @@ final class LevelBuilder {
             return CGPoint(x: rect.midX, y: rect.maxY + GameConstants.playerHeight / 2)
         }
         return CGPoint(x: GameConstants.tileSize * 2, y: GameConstants.tileSize * 3)
+    }
+
+    /// Centre of the tile just above the ground near the right end of the map.
+    private static func finishPoint(in map: TileMap) -> CGPoint? {
+        for col in stride(from: map.width - 4, to: max(0, map.width - 16), by: -1) {
+            for row in 1..<map.height where map.isSolid(map.kind(at: col, row: row)) {
+                guard map.kind(at: col, row: row - 1) == .empty else { break }
+                let rect = map.tileRect(col: col, row: row - 1)
+                return CGPoint(x: rect.midX, y: rect.midY)
+            }
+        }
+        return nil
     }
 
     private static func groundTop(in map: TileMap) -> CGFloat {
