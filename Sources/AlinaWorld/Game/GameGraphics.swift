@@ -4,7 +4,10 @@ import SpriteKit
 enum GameGraphics {
     static let popFont = "AvenirNext-Heavy"
 
-    static func makeBlockNode(kind: BlockKind, theme: WorldTheme, topExposed: Bool, artVariant: Int = 0) -> SKSpriteNode {
+    /// `corners` are the tile's exposed outer corners (see `RoundedTiles`); land curves them broadly, while separate
+    /// blocks (bloom blocks, bricks, springs) are always softly rounded on every corner.
+    static func makeBlockNode(kind: BlockKind, theme: WorldTheme, topExposed: Bool, artVariant: Int = 0,
+                              corners: RoundedTiles.Corners = []) -> SKSpriteNode {
         let sprite: PixelSprite
         switch kind {
         case .solid: sprite = topExposed ? .groundTop : .groundFill
@@ -14,7 +17,21 @@ enum GameGraphics {
         case .pipe: sprite = .log
         case .spring: sprite = .springShell
         }
-        return PixelArt.node(sprite, theme: theme, overrides: ["#": UInt32(artVariant)], scale: GameConstants.tilePixel)
+        let node = PixelArt.node(sprite, theme: theme, overrides: ["#": UInt32(artVariant)], scale: GameConstants.tilePixel)
+        roundBlock(node, sprite: sprite, kind: kind, theme: theme, artVariant: artVariant, corners: corners)
+        return node
+    }
+
+    /// Re-skins a block sprite with its rounded corners baked in.
+    static func roundBlock(_ node: SKSpriteNode, sprite: PixelSprite, kind: BlockKind, theme: WorldTheme,
+                           artVariant: Int = 0, corners: RoundedTiles.Corners) {
+        let land = kind == .solid || kind == .ground
+        let shape: RoundedTiles.Corners = (kind == .brick || kind == .question || kind == .spring) ? .all : corners
+        guard !shape.isEmpty else { return }
+        let overrides: [Character: UInt32] = land ? ["#": UInt32(artVariant)] : [:]
+        let image = PixelArt.image(sprite, theme: theme, overrides: overrides)
+        node.texture = RoundedTiles.texture(image, key: "\(sprite.rawValue)|\(theme.key)|\(land ? artVariant : 0)",
+                                            corners: shape, radius: land ? RoundedTiles.landRadius : RoundedTiles.blockRadius)
     }
 
     static func makeBeacon() -> SKNode {

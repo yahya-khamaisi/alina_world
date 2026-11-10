@@ -1,9 +1,9 @@
 import SpriteKit
 
-/// Rounds off the hard vertical cuts where painted ground meets a pit or a step: a soil side wall down every exposed
-/// side, a grass overhang curling over each top corner, and roots or vines hanging under floating ledges.
-/// Art comes from `TerrainEdges.png` (2 × 2: overhang, side wall, roots, vine), painted facing left and mirrored for
-/// the right side. Purely visual: collision still uses the tile grid.
+/// Softens the land's outline beyond what the tiles' own rounded corners do: curved soil fillets in inside
+/// corners (where a floor meets a wall), and roots or vines hanging under floating ledges.
+/// Root and vine art comes from `TerrainEdges.png` (2 × 2: overhang, side wall, roots, vine).
+/// Purely visual: collision still uses the tile grid.
 enum TerrainEdges {
     private enum Piece: Int, CaseIterable { case overhang, wall, roots, vine }
 
@@ -38,24 +38,15 @@ enum TerrainEdges {
         for row in 0..<map.height {
             for col in 0..<map.width where earth(col, row) {
                 let rect = map.tileRect(col: col, row: row)
-                let topOpen = !closed(col, row - 1) || row == 0
-                for side in [-1, 1] where !closed(col + side, row) {
-                    // Side wall: half outside the tile so the silhouette bulges and rounds.
-                    let wall = sprite(.wall, theme: theme, height: tile + 2)
-                    wall.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-                    wall.xScale = side < 0 ? 1 : -1
-                    wall.position = CGPoint(x: side < 0 ? rect.minX + 1 : rect.maxX - 1, y: rect.midY)
-                    wall.zPosition = 1.2
-                    worldNode.addChild(wall)
-
-                    if topOpen {
-                        let lip = sprite(.overhang, theme: theme, width: tile * 0.95)
-                        lip.anchorPoint = CGPoint(x: 0.78, y: 0.8)
-                        lip.xScale = side < 0 ? 1 : -1
-                        lip.position = CGPoint(x: side < 0 ? rect.minX + 5 : rect.maxX - 5, y: rect.maxY)
-                        lip.zPosition = 1.6
-                        worldNode.addChild(lip)
-                    }
+                // Outer corners are rounded in the tiles themselves (`RoundedTiles`). Inside corners, where this tile
+                // is a wall rising from a floor beside it, get a curved soil fillet so the outline flows.
+                for side in [-1, 1] where !closed(col + side, row) && earth(col + side, row + 1) {
+                    let fillet = SKSpriteNode(texture: RoundedTiles.fillet(theme: theme, variant: (col + row) % 8, wallOnRight: side < 0),
+                                              size: CGSize(width: tile * RoundedTiles.filletRadius, height: tile * RoundedTiles.filletRadius))
+                    fillet.anchorPoint = CGPoint(x: side < 0 ? 1 : 0, y: 0)
+                    fillet.position = CGPoint(x: side < 0 ? rect.minX : rect.maxX, y: rect.minY)
+                    fillet.zPosition = 1.05
+                    worldNode.addChild(fillet)
                 }
 
                 // Under a ledge that floats over open space, now and then let roots or a vine hang down.

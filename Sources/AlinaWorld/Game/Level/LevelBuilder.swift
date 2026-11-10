@@ -53,7 +53,8 @@ final class LevelBuilder {
                     let topExposed = !map.isSolid(map.kind(at: col, row: row - 1))
                     if topExposed { surfaceByColumn[col] = row }
                     let depth = max(0, row - (surfaceByColumn[col] ?? row) - 1)
-                    let block = BlockNode(kind: blockKind(for: kind), theme: theme, topExposed: topExposed, artVariant: col % 8 + (depth % 3) * 8)
+                    let block = BlockNode(kind: blockKind(for: kind), theme: theme, topExposed: topExposed, artVariant: col % 8 + (depth % 3) * 8,
+                                          corners: RoundedTiles.exposedCorners(col: col, row: row, map: map))
                     block.position = center
                     worldNode.addChild(block)
                 case .coin:

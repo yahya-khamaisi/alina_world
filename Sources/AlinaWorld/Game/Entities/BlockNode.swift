@@ -14,10 +14,12 @@ final class BlockNode: SKNode {
     var hitCount = 0
     var revealed = false
     private let visualNode: SKSpriteNode
+    private let theme: WorldTheme
 
-    init(kind: BlockKind, theme: WorldTheme, topExposed: Bool = true, artVariant: Int = 0) {
+    init(kind: BlockKind, theme: WorldTheme, topExposed: Bool = true, artVariant: Int = 0, corners: RoundedTiles.Corners = []) {
         blockKind = kind
-        visualNode = GameGraphics.makeBlockNode(kind: kind, theme: theme, topExposed: topExposed, artVariant: artVariant)
+        self.theme = theme
+        visualNode = GameGraphics.makeBlockNode(kind: kind, theme: theme, topExposed: topExposed, artVariant: artVariant, corners: corners)
 
         super.init()
         name = "block"
@@ -31,6 +33,7 @@ final class BlockNode: SKNode {
     /// Swaps a bloom block to its emptied stone look.
     func markUsed() {
         visualNode.texture = PixelArt.texture(.bloomBlockUsed)
+        GameGraphics.roundBlock(visualNode, sprite: .bloomBlockUsed, kind: blockKind, theme: theme, corners: .all)
     }
 
     func bump() {
