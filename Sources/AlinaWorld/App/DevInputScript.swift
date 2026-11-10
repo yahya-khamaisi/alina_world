@@ -6,7 +6,7 @@ import AppKit
 /// a key name, and `down`, `up` or `tap`.
 enum DevInputScript {
     private static let codes: [String: UInt16] = [
-        "left": 123, "right": 124, "a": 0, "d": 2, "s": 1, "up": 126, "down": 125, "space": 49, "esc": 53, "enter": 36
+        "left": 123, "right": 124, "up": 126, "down": 125, "space": 49, "esc": 53, "enter": 36
     ]
 
     static func run(_ spec: String?) {

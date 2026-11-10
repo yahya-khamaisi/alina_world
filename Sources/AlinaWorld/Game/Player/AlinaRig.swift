@@ -19,8 +19,6 @@ final class AlinaRig: SKNode {
         var bloom: Bool
         /// 0…1 through the double-jump flip, nil when not flipping.
         var flip: CGFloat?
-        /// Punch or kick in progress: (isKick, 0…1 through it).
-        var attack: (kick: Bool, progress: CGFloat)? = nil
         var dt: CGFloat
     }
 
@@ -270,28 +268,6 @@ final class AlinaRig: SKNode {
             hips.zRotation = approach(hips.zRotation, 0, dt, rate: 30)
         }
 
-        var attacking = false
-        if let attack = m.attack, m.flip == nil {
-            attacking = true
-            face = .headShout
-            // Wind up (0–0.22), strike (to 0.55), recover. Targets are snapped toward fast so the hit reads.
-            let p = attack.progress
-            let windUp = p < 0.22, strike = p >= 0.22 && p < 0.6
-            if attack.kick {
-                pose.lean = windUp ? 0.12 : (strike ? 0.32 : 0.12)
-                pose.thigh = (windUp ? 0.9 : (strike ? 1.75 : 0.5), -0.25)
-                pose.shin = (windUp ? -1.6 : (strike ? -0.1 : -0.8), -0.2)
-                pose.upperArm = (0.9, -1.1)
-                pose.forearm = (0.6, -0.4)
-                pose.bob = strike ? 0.6 : 0
-            } else {
-                pose.lean = windUp ? 0.08 : (strike ? -0.26 : -0.08)
-                pose.upperArm = (windUp ? -0.55 : (strike ? 1.62 : 0.8), windUp ? 0.6 : -0.7)
-                pose.forearm = (windUp ? 1.7 : (strike ? 0.05 : 0.9), 0.9)
-                pose.headTilt = strike ? -0.08 : 0
-            }
-        }
-
         // Blink now and then when the face is relaxed.
         blinkTimer -= dt
         if blinkTimer < 0 { blinkTimer = .random(in: 2.4...4.2) }
@@ -299,7 +275,7 @@ final class AlinaRig: SKNode {
         if let texture = Self.textures[face], head.texture !== texture { head.texture = texture }
 
         // Blend every bone toward the pose instead of snapping.
-        let rate: CGFloat = attacking ? 46 : (m.state == .run || m.state == .walk) ? 28 : 16
+        let rate: CGFloat = (m.state == .run || m.state == .walk) ? 28 : 16
         torso.zRotation = approach(torso.zRotation, pose.lean, dt, rate: rate)
         head.zRotation = approach(head.zRotation, pose.headTilt - pose.lean * 0.4, dt, rate: rate)
         for (i, arm) in arms.enumerated() {

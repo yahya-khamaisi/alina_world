@@ -105,8 +105,6 @@ enum SettingsKey {
     static let reduceMotion = "settings.reduceMotion"
     static let musicVolume = "settings.musicVolume"
     static let effectsVolume = "settings.effectsVolume"
-    /// Off by default: Alina runs on her own and the arrows fight. On: A / D steer her by hand.
-    static let manualRun = "settings.manualRun"
 }
 
 private extension Int {

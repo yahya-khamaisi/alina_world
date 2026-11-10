@@ -17,7 +17,6 @@ struct SettingsView: View {
 private struct GameplaySettings: View {
     @AppStorage(SettingsKey.assistMode) private var assistMode = false
     @AppStorage(SettingsKey.showHints) private var showHints = true
-    @AppStorage(SettingsKey.manualRun) private var manualRun = false
 
     var body: some View {
         Form {
@@ -28,18 +27,12 @@ private struct GameplaySettings: View {
                 }
                 Toggle(isOn: $showHints) {
                     Text("Show control hints")
-                    Text("Shows the punch, kick and jump keys for the first few seconds of a mission.")
+                    Text("Shows the jump and sprint keys for the first few seconds of a mission.")
                 }
             }
             Section("Controls") {
-                Toggle(isOn: $manualRun) {
-                    Text("Steer Alina by hand")
-                    Text("Off: Alina runs on her own. On: A and D move her left and right.")
-                }
-                LabeledContent("Punch", value: "← or Z")
-                LabeledContent("Kick", value: "→ or X")
+                LabeledContent("Move", value: "← → or A D")
                 LabeledContent("Jump · glide", value: "Space, W or ↑")
-                LabeledContent("Brake", value: "↓ or S")
                 LabeledContent("Sprint", value: "Shift")
                 LabeledContent("Pause", value: "Esc")
                 LabeledContent("Full screen", value: "F")

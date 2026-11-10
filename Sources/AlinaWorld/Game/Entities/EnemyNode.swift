@@ -69,11 +69,10 @@ final class EnemyNode: SKNode {
     private let visualNode: SKSpriteNode
     /// Cut-out puppet used once `CreatureRig.png` is bundled; `visualNode` then only sets the size.
     private var rig: CreatureRig?
-    /// Hop and knock-back motion above the patrol line.
+    /// Hop motion above the patrol line.
     private var hopVelocity: CGFloat = 0
     private var hopTimer = CGFloat.random(in: 0.3...1.2)
     private var hopHeight: CGFloat = 0
-    private var knockVelocity: CGFloat = 0
     /// Charge: wind-up then rush, then a rest before it can charge again.
     private var chargeTimer: CGFloat = 0
     private var chargeRest: CGFloat = 0
@@ -241,13 +240,7 @@ final class EnemyNode: SKNode {
             if swoopDepth >= 1 { swooping = false }
         }
 
-        if knockVelocity != 0 {
-            position.x += knockVelocity * dt
-            knockVelocity *= pow(0.02, dt)
-            if abs(knockVelocity) < 8 { knockVelocity = 0 }
-        } else {
-            position.x += direction * speed * dt
-        }
+        position.x += direction * speed * dt
         visualNode.xScale = direction > 0 ? -1 : 1
         if let rig {
             rig.xScale = visualNode.xScale
@@ -270,13 +263,6 @@ final class EnemyNode: SKNode {
         } else {
             position.y = originY + lift
         }
-    }
-
-    /// Punched or kicked: a hit like a stomp, plus a shove away from Alina. Returns true when defeated.
-    func strike(fromX x: CGFloat, power: CGFloat) -> Bool {
-        knockVelocity = (position.x < x ? -1 : 1) * 260 * power
-        chargeTimer = 0
-        return stomp()
     }
 
     func stomp() -> Bool {

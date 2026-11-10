@@ -13,8 +13,6 @@ final class InputController {
     private(set) var right = false
     private(set) var jumpHeld = false
     private(set) var sprint = false
-    /// Gameplay: hold ↓ or S to slow the auto-run to a stop.
-    private(set) var brake = false
     private(set) var escapePressed = false
     private(set) var enterPressed = false
     private(set) var pausePressed = false
@@ -24,9 +22,6 @@ final class InputController {
     private(set) var tabPressed = false
     /// Latched on every fresh jump press, so a tap that goes down and up between frames still jumps.
     private var jumpTapped = false
-    /// Gameplay: ← (or Z) punches, → (or X) kicks. Latched like jumps so quick taps never get lost.
-    private var punchTapped = false
-    private var kickTapped = false
 
     var mode: Mode = .menu
 
@@ -109,16 +104,6 @@ final class InputController {
         return jumpTapped
     }
 
-    func consumePunch() -> Bool {
-        defer { punchTapped = false }
-        return punchTapped
-    }
-
-    func consumeKick() -> Bool {
-        defer { kickTapped = false }
-        return kickTapped
-    }
-
     func consumeFullscreen() -> Bool {
         if fullscreenPressed {
             fullscreenPressed = false
@@ -138,8 +123,6 @@ final class InputController {
     /// Drops one-shot presses left over from the previous screen.
     func clearPresses() {
         jumpTapped = false
-        punchTapped = false
-        kickTapped = false
         escapePressed = false
         enterPressed = false
         pausePressed = false
@@ -158,9 +141,6 @@ final class InputController {
         right = false
         jumpHeld = false
         sprint = false
-        brake = false
-        punchTapped = false
-        kickTapped = false
         escapePressed = false
         enterPressed = false
         pausePressed = false
@@ -184,10 +164,6 @@ final class InputController {
         switch event.type {
         case .keyDown:
             switch code {
-            case 123 where mode == .gameplay, 6 where mode == .gameplay:
-                if !event.isARepeat { punchTapped = true }
-            case 124 where mode == .gameplay, 7 where mode == .gameplay:
-                if !event.isARepeat { kickTapped = true }
             case 0, 123:
                 left = true
                 if mode == .menu { right = false }
@@ -203,7 +179,7 @@ final class InputController {
                 if mode == .gameplay { if !event.isARepeat { jumpTapped = true }; jumpHeld = true }
                 else { upPressed = true; downPressed = false }
             case 125, 1:
-                if mode == .menu { downPressed = true; upPressed = false } else { brake = true }
+                if mode == .menu { downPressed = true; upPressed = false }
             case 53:
                 escapePressed = true
                 pausePressed = true
@@ -220,7 +196,6 @@ final class InputController {
             switch code {
             case 0, 123: left = false
             case 2, 124: right = false
-            case 125, 1: brake = false
             case 49, 13, 126: jumpHeld = false
             default: break
             }
