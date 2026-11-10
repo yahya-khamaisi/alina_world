@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dehaze and upscale the painted world backdrops for the game.
 
-Reads the source paintings from design/art-v3/source-backdrops/*.png and writes
+Reads the source paintings from design/backdrops-v4/*Distance.png and writes
 Sources/AlinaWorld/Resources/Art/<name>.jpg at twice the size:
 
 1. Dark-channel dehaze: estimates the milky veil per pixel (strong on distant mountains and the misty
@@ -19,7 +19,7 @@ import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE = ROOT / "design/art-v3/source-backdrops"
+SOURCE = ROOT / "design/backdrops-v4"
 OUT = ROOT / "Sources/AlinaWorld/Resources/Art"
 
 OMEGA = 0.68        # share of the estimated haze to remove (1 = all of it)
@@ -70,7 +70,7 @@ def enhance(path: Path) -> Path:
 
 def main() -> None:
     names = sys.argv[1:]
-    paths = [SOURCE / f"{n}.png" for n in names] if names else sorted(SOURCE.glob("*.png"))
+    paths = [SOURCE / f"{n}.png" for n in names] if names else sorted(SOURCE.glob("*Distance.png"))
     for p in paths:
         t = enhance(p)
         print(f"{p.name} -> {t.relative_to(ROOT)} ({t.stat().st_size // 1024} KB)")
