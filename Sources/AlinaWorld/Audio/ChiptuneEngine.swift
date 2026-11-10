@@ -147,6 +147,7 @@ final class ChiptuneSynth {
     private var snareTime: Double = 1
     private var hatTime: Double = 1
     private var drumLevel: Float = 1
+    private var songGain: Float = 1
     private var swing: Double = 0
     private var baseSamplesPerStep: Double = 1
     private var vibratoTime: Double = 0
@@ -249,7 +250,7 @@ final class ChiptuneSynth {
         let echoed = echo[echoIndex]
         echo[echoIndex] = music + echoed * 0.3
         echoIndex = (echoIndex + 1) % echo.count
-        let musicBus = (music + echoed * 0.22) * fade * duck * musicVolume
+        let musicBus = (music + echoed * 0.22) * fade * duck * musicVolume * songGain
 
         var sfx: Float = 0
         for i in effects.indices where effects[i].active {
@@ -274,6 +275,7 @@ final class ChiptuneSynth {
             samplesPerStep = baseSamplesPerStep
             sampleInStep = samplesPerStep
             drumLevel = newSong.drumLevel
+            songGain = newSong.gain
             swing = newSong.swing
             configure(&lead, newSong.leadVoice)
             configure(&harmony, newSong.harmonyVoice)

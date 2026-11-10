@@ -8,7 +8,7 @@ struct Song {
     private(set) var bpm: Double
     let loops: Bool
     let lead: [Int]
-    let harmony: [Int]
+    private(set) var harmony: [Int]
     let bass: [Int]
     let drums: [Character]
     /// Sound of the melody and of the harmony line; the bass is always a soft triangle.
@@ -18,6 +18,8 @@ struct Song {
     var drumLevel: Float = 1
     /// 0 plays straight eighths; 0.1–0.15 gives a light, bouncy swing.
     var swing: Double = 0
+    /// Overall music level for this song (1 = as mixed for menus).
+    var gain: Float = 1
 
     var length: Int { max(lead.count, harmony.count, bass.count, drums.count) }
 
@@ -47,6 +49,20 @@ struct Song {
         copy.name += " (guardian)"
         copy.bpm *= factor
         copy.drumLevel = min(1, drumLevel * 1.3)
+        return copy
+    }
+
+    /// The in-level arrangement: just the melody on a soft voice over the bass, no harmony line or drums, a little
+    /// slower and about half as loud, so the music sits quietly under the game.
+    func calm() -> Song {
+        var copy = self
+        copy.name += " (calm)"
+        copy.bpm *= 0.94
+        copy.harmony = Array(repeating: Song.rest, count: harmony.count)
+        copy.drumLevel = 0
+        copy.swing = min(swing, 0.08)
+        copy.gain = 0.5
+        copy.leadVoice = leadVoice.gentle
         return copy
     }
 
@@ -126,6 +142,15 @@ enum Instrument {
         }
     }
 
+    /// A softer stand-in for buzzy square voices, used by the calm in-level arrangement.
+    var gentle: Instrument {
+        switch self {
+        case .chip, .organ: return .flute
+        case .softSquare: return .ocarina
+        default: return self
+        }
+    }
+
     /// Pitch wobble depth for breathy voices.
     var vibrato: Double {
         switch self {
@@ -163,9 +188,12 @@ enum Songs {
         bass: ["C3 . B2 . Bb2 . A2 . . . -"]
     )
 
-    /// Each world's own song; guardian missions play it a little faster with more drums.
+    /// Each world's own song in its calm in-level arrangement; guardian missions play it a little faster.
     static func world(_ key: String, guardian: Bool) -> Song {
-        let base = byKey[key] ?? title
-        return guardian ? base.withTempo(1.08) : base
+        let base = (byKey[key] ?? title).calm()
+        guard guardian else { return base }
+        var faster = base.withTempo(1.08)
+        faster.drumLevel = 0
+        return faster
     }
 }
